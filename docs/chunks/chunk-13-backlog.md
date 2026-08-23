@@ -1,0 +1,32 @@
+# Chunk 13 — Backlog (optional, pick individually)
+
+**Read first:** `docs/00-CONTEXT.md` and the relevant methodology section.
+**Depends on:** 12. **Size:** S each — run one item per session, not all at once.
+
+Only build these after you've trained a full block with the app. Real annoyance
+beats speculation.
+
+1. **Data export/import** — download everything as JSON; re-import into a fresh
+   account. Cheap insurance, high value.
+2. **Session reminders** — Web Push on training days at a chosen time.
+   Needs a `push_subscriptions` table and a Vercel cron route handler.
+3. **Manual deload / skip week** — "I'm travelling" → shift the block forward,
+   or force a deload now and re-wave the remaining weeks.
+4. **Alternate block templates** — a strength-biased block (more T1 sets, fewer
+   T3) and a "move well" block (Filly-heavier: two T2, more unilateral, more Z2).
+   Implemented as a `blockTemplate` field in `GeneratorInput`, not a fork of the
+   generator. **Must still pass the matrix test.**
+5. **1RM test week** — an optional week 5 that replaces the wave with a
+   ramp-to-a-top-single, and feeds the result straight into the next TM.
+6. **Warm-up customisation** — let the athlete pin a mobility drill that appears
+   in every primer.
+7. **Bodyweight & measurements** — a weekly weigh-in, plotted against tonnage.
+   Keep it neutral; no targets, no judgement.
+8. **Swedish localisation** — the exercise `aliases` field already carries the
+   Swedish names; add `next-intl` and translate the UI strings.
+9. **Apple Health / Google Fit export** — write completed sessions as workouts.
+10. **Plate calculator** — given a target load and available plates, show what to
+    load per side. Small feature, disproportionately loved.
+
+For each: write a short chunk file first (mission, deliverables, acceptance,
+do-not), then run it. Keep the discipline — that's what made the first twelve work.
