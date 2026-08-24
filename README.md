@@ -1,5 +1,7 @@
 # Training4me
 
+**Live: https://training4me.vercel.app**
+
 A personal training app. You say how many days a week you can train; it builds a
 full block — every week, every session, every set — then walks you through each
 session and logs it.
