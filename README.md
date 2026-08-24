@@ -13,70 +13,72 @@ aerobic capacity so you stay mobile and uninjured while getting genuinely strong
 
 ## Setup
 
-You need two values from Supabase before the app can talk to the database.
+The app connects to Supabase with the project's **publishable key**, the same
+public key every other app on this account uses — the one that is *meant* to
+ship in a browser bundle. There is nothing to paste in to run it.
 
-1. `cp .env.example .env.local`
-2. Open the Supabase dashboard for the **sauna-booking** project →
-   *Project Settings → API → service_role secret*, and paste it into
-   `SUPABASE_SERVICE_ROLE_KEY`.
-3. Pick any `APP_PIN`. It locks the app to you and is remembered for 90 days.
-4. `pnpm install && pnpm dev` → http://localhost:3000
+1. `pnpm install && pnpm dev` → http://localhost:3000
 
-The training tables live in that project prefixed `t4m_`, completely separate
-from the sauna app. They have row-level security on with **no policies at all**,
-so the public API key can read and write nothing; every query goes through the
-Next.js server with the service role. That is verified in the database itself —
-the `anon` role sees zero rows and its inserts fail.
+Optionally, set `APP_PIN` in `.env.local` to test the lock screen locally; it
+does nothing by default outside production (see below).
+
+The training tables live in the **cyberpunk-vibe01** Supabase project, prefixed
+`t4m_` and separate from that project's other tables. RLS is enabled with
+policies scoped to exactly those tables — nothing else in that project is
+reachable through this app, and this app touches nothing else in it either.
+
+**The trade-off, stated plainly:** because the publishable key is public by
+design, the `t4m_` tables are reachable by anyone who has it — which is the
+same key already visible in every Supabase app's browser network tab, this
+account's included. What actually keeps a stranger out is the app's own PIN
+gate (below), not the database. For a personal training log that is a
+reasonable line to draw. If you want the database itself locked down too, see
+*Tightening it* below — it is one environment variable, no code change.
 
 ## Deploying to Vercel
 
-The app is ready to deploy as-is; Next.js is auto-detected and the build needs
-no environment variables (every page is request-time, nothing touches the
-database at build time).
+The app deploys as-is with **zero required environment variables** — Next.js
+is auto-detected and there is nothing to configure for it to run.
 
 1. **Import the repo** — https://vercel.com/new → import
    `Superdupermega/Training4me`. If it is not listed, click *Adjust GitHub App
    Permissions* and grant access to this repository.
-2. **Add two environment variables** (Project Settings → Environment
-   Variables), with **Production** ticked:
+2. Deploy. That's the whole setup.
 
-   | Name | Value |
-   |---|---|
-   | `SUPABASE_SERVICE_ROLE_KEY` | the service_role secret from the Supabase dashboard |
-   | `APP_PIN` | a passphrase you will remember — see below |
+Every push to the repo's default branch deploys automatically after that.
 
-   The Supabase project URL is not a secret and has a default in
-   `src/server/db.ts`, so it does not need to be configured.
+### Turn on the lock
 
-   Neither of these may go in the repository. It is public, and the
-   service-role key bypasses row-level security on the whole Supabase
-   project — including the sauna app sharing it.
+Without `APP_PIN` set, production refuses to serve the app (`503`) rather than
+publishing your training log with no lock at all — that is deliberate, not a
+bug. To turn it on:
 
-   From a terminal instead of the dashboard:
+```bash
+npx vercel login
+npx vercel link --yes --project training4me
+npx vercel env add APP_PIN production   # paste a passphrase when prompted
+npx vercel --prod                        # rebuild — env changes need a new build
+```
 
-   ```bash
-   npx vercel login
-   npx vercel link --yes --project training4me
-   npx vercel env add SUPABASE_SERVICE_ROLE_KEY production   # paste when prompted
-   npx vercel env add APP_PIN production
-   npx vercel --prod                                          # rebuild with them
-   ```
+**Make it a passphrase, not four digits.** This is genuinely the only thing
+between the internet and your log. The cookie stores a SHA-256 hash rather
+than the PIN itself, comparison is constant-time, and wrong guesses are slowed
+down — none of which saves a four-digit PIN from being guessed in seconds.
+Something like `bench-105-in-may` is just as easy to type on a phone.
 
-3. **Redeploy.** Every push to the repo's default branch deploys automatically
-   after that.
+> **Env var changes need a redeploy, not just a save.** The lock runs in Edge
+> middleware, and Vercel inlines environment variables into that bundle at
+> build time. If the site returns `503 APP_PIN is not set` when you know you
+> set it: Deployments → the latest one → ⋯ → **Redeploy**.
 
-> **Adding or changing any of these requires a redeploy**, not just a save.
-> The lock runs in Edge middleware, and Vercel inlines environment variables
-> into the Edge bundle at build time — so a variable added after the last build
-> is invisible to the running deployment until you rebuild. If the site returns
-> `503 APP_PIN is not set` when you know you have set it, that is what happened:
-> Deployments → the latest one → ⋯ → **Redeploy**.
+### Tightening it: lock the database too, not just the front door
 
-`SUPABASE_SERVICE_ROLE_KEY` must never be given a `NEXT_PUBLIC_` prefix — that
-would ship it to the browser and hand anyone full access to the database.
-
-If `APP_PIN` is missing, a production deployment returns 503 rather than serving
-your training log to the internet. That is deliberate.
+Set `SUPABASE_SECRET_KEY` in Vercel to the `sb_secret_...` key from
+**cyberpunk-vibe01 → Project Settings → API Keys → Secret keys**, then
+redeploy. The app picks up a configured secret key automatically and switches
+to it — no code change. This closes the trade-off above: with a secret key
+configured, only the server can reach the `t4m_` tables at all, publishable
+key or not. This value must never go in the repository, which is public.
 
 **Make `APP_PIN` a passphrase, not four digits.** With Vercel Authentication
 turned off, this is the only thing between the internet and your log. The cookie
