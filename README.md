@@ -37,14 +37,30 @@ database at build time).
 1. **Import the repo** — https://vercel.com/new → import
    `Superdupermega/Training4me`. If it is not listed, click *Adjust GitHub App
    Permissions* and grant access to this repository.
-2. **Add three environment variables** (Project Settings → Environment
-   Variables), for Production and Preview:
+2. **Add two environment variables** (Project Settings → Environment
+   Variables), with **Production** ticked:
 
    | Name | Value |
    |---|---|
-   | `NEXT_PUBLIC_SUPABASE_URL` | `https://tqfrnzjvyviykrbfzlxp.supabase.co` |
    | `SUPABASE_SERVICE_ROLE_KEY` | the service_role secret from the Supabase dashboard |
    | `APP_PIN` | a passphrase you will remember — see below |
+
+   The Supabase project URL is not a secret and has a default in
+   `src/server/db.ts`, so it does not need to be configured.
+
+   Neither of these may go in the repository. It is public, and the
+   service-role key bypasses row-level security on the whole Supabase
+   project — including the sauna app sharing it.
+
+   From a terminal instead of the dashboard:
+
+   ```bash
+   npx vercel login
+   npx vercel link --yes --project training4me
+   npx vercel env add SUPABASE_SERVICE_ROLE_KEY production   # paste when prompted
+   npx vercel env add APP_PIN production
+   npx vercel --prod                                          # rebuild with them
+   ```
 
 3. **Redeploy.** Every push to the repo's default branch deploys automatically
    after that.
