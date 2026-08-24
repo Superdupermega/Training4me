@@ -26,6 +26,36 @@ so the public API key can read and write nothing; every query goes through the
 Next.js server with the service role. That is verified in the database itself —
 the `anon` role sees zero rows and its inserts fail.
 
+## Deploying to Vercel
+
+The app is ready to deploy as-is; Next.js is auto-detected and the build needs
+no environment variables (every page is request-time, nothing touches the
+database at build time).
+
+1. **Import the repo** — https://vercel.com/new → import
+   `Superdupermega/Training4me`. If it is not listed, click *Adjust GitHub App
+   Permissions* and grant access to this repository.
+2. **Add three environment variables** (Project Settings → Environment
+   Variables), for Production and Preview:
+
+   | Name | Value |
+   |---|---|
+   | `NEXT_PUBLIC_SUPABASE_URL` | `https://tqfrnzjvyviykrbfzlxp.supabase.co` |
+   | `SUPABASE_SERVICE_ROLE_KEY` | the service_role secret from the Supabase dashboard |
+   | `APP_PIN` | any PIN you will remember |
+
+3. **Redeploy.** Every push to the repo's default branch deploys automatically
+   after that.
+
+`SUPABASE_SERVICE_ROLE_KEY` must never be given a `NEXT_PUBLIC_` prefix — that
+would ship it to the browser and hand anyone full access to the database.
+
+If `APP_PIN` is missing, a production deployment returns 503 rather than serving
+your training log to the internet. That is deliberate.
+
+On your phone, open the deployed URL and use *Add to Home Screen*; it installs
+as a standalone app and the session player keeps working without signal.
+
 ## Commands
 
 | Command | What it does |
