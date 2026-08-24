@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { connectionSummary, db, describeKey } from './db';
 
 const b64 = (o: unknown) => Buffer.from(JSON.stringify(o)).toString('base64url');
-const jwt = (role: string, ref = 'tqfrnzjvyviykrbfzlxp') =>
+const jwt = (role: string, ref = 'evlxbewvsgrlncvtagmf') =>
   `eyJhbGciOiJIUzI1NiJ9.${b64({ role, ref })}.sig`;
 
 const set = (value: string | undefined) => {
@@ -66,7 +66,7 @@ describe('db', () => {
 
   it('always points at the right project, whatever the environment says', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://typo.supabase.co';
-    expect(connectionSummary()).toContain('tqfrnzjvyviykrbfzlxp');
+    expect(connectionSummary()).toContain('evlxbewvsgrlncvtagmf');
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
   });
 });

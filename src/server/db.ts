@@ -7,7 +7,7 @@ import { createClient } from '@supabase/supabase-js';
  * configured: a typo in a hand-entered URL surfaces as an opaque
  * "Invalid API key", which sends you looking in entirely the wrong place.
  */
-const SUPABASE_URL = 'https://tqfrnzjvyviykrbfzlxp.supabase.co';
+const SUPABASE_URL = 'https://evlxbewvsgrlncvtagmf.supabase.co';
 
 /**
  * The secret key is the opposite: it bypasses RLS on the whole project, so it
@@ -34,7 +34,7 @@ export function describeKey(key: string | undefined): string {
       const payload = JSON.parse(
         Buffer.from(key.split('.')[1] ?? '', 'base64').toString('utf8'),
       ) as { role?: string; ref?: string };
-      const project = payload.ref === 'tqfrnzjvyviykrbfzlxp'
+      const project = payload.ref === 'evlxbewvsgrlncvtagmf'
         ? 'this project'
         : `project "${payload.ref}" — WRONG PROJECT`;
       return `legacy JWT, role=${payload.role}, ${project}`;
