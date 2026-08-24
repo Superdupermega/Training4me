@@ -1,6 +1,6 @@
 import { getExercise } from '../library/exercises';
 import { find, type LibraryContext } from '../library/query';
-import type { MovementPattern, PlannedSession, PlannedWeek } from '../types';
+import type { MovementPattern, PlannedWeek } from '../types';
 import type { GenContext } from './context';
 
 export interface BalanceViolation {

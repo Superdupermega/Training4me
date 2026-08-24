@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateSet, estimateSession, fitToBudget, recost } from './timeBudget';
+import { estimateSet, fitToBudget, recost } from './timeBudget';
 import { SessionOverBudgetError, type PlannedSession, type SessionBlock } from './types';
 
 const set = (over: Partial<Parameters<typeof estimateSet>[0]> = {}) => ({

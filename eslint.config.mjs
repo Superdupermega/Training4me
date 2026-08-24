@@ -1,25 +1,28 @@
-import { dirname } from "path";
-import { fileURLToPath } from "url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { FlatCompat } from '@eslint/eslintrc';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const compat = new FlatCompat({ baseDirectory: dirname(fileURLToPath(import.meta.url)) });
 
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
-const eslintConfig = [
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
+const config = [
+  { ignores: ['.next/**', 'node_modules/**', 'next-env.d.ts'] },
+  ...compat.extends('next/core-web-vitals'),
   {
-    ignores: [
-      "node_modules/**",
-      ".next/**",
-      "out/**",
-      "build/**",
-      "next-env.d.ts",
-    ],
+    // The program logic must stay pure: no React, no database, no framework.
+    // If this rule ever fires, the fix is to move the code, not to relax the rule.
+    files: ['src/core/**/*.ts'],
+    ignores: ['src/core/**/*.test.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [
+          {
+            group: ['react', 'react-*', 'next', 'next/*', '@mui/*', '@supabase/*', '@/server/*', 'server-only'],
+            message: 'src/core must stay pure: no React, no Next, no MUI, no database.',
+          },
+        ],
+      }],
+    },
   },
 ];
 
-export default eslintConfig;
+export default config;
