@@ -47,6 +47,13 @@ database at build time).
 3. **Redeploy.** Every push to the repo's default branch deploys automatically
    after that.
 
+> **Adding or changing any of these requires a redeploy**, not just a save.
+> The lock runs in Edge middleware, and Vercel inlines environment variables
+> into the Edge bundle at build time — so a variable added after the last build
+> is invisible to the running deployment until you rebuild. If the site returns
+> `503 APP_PIN is not set` when you know you have set it, that is what happened:
+> Deployments → the latest one → ⋯ → **Redeploy**.
+
 `SUPABASE_SERVICE_ROLE_KEY` must never be given a `NEXT_PUBLIC_` prefix — that
 would ship it to the browser and hand anyone full access to the database.
 
