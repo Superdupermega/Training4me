@@ -7,6 +7,7 @@ import { PROFILE_EQUIPMENT } from '@/core/library/equipment';
 import { detectPRs } from '@/core/progression/prs';
 import { applyReadiness } from '@/core/progression/readiness';
 import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness } from '@/core/types';
+import { COOKIE_MAX_AGE, COOKIE_NAME, deriveToken, safeEqual } from './lock';
 import * as repo from './repo';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
@@ -19,10 +20,14 @@ function fail(err: unknown): Result<never> {
 export async function unlock(formData: FormData): Promise<Result> {
   const pin = process.env.APP_PIN;
   const given = String(formData.get('pin') ?? '');
-  if (!pin || given !== pin) return { ok: false, error: 'Wrong PIN' };
-  (await cookies()).set('t4m_unlocked', pin, {
+  if (!pin || !safeEqual(await deriveToken(given), await deriveToken(pin))) {
+    // Slow down casual guessing. Not a substitute for a long PIN.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return { ok: false, error: 'Wrong PIN' };
+  }
+  (await cookies()).set(COOKIE_NAME, await deriveToken(pin), {
     httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production',
-    maxAge: 60 * 60 * 24 * 90, path: '/',
+    maxAge: COOKIE_MAX_AGE, path: '/',
   });
   return { ok: true };
 }

@@ -42,7 +42,7 @@ database at build time).
    |---|---|
    | `NEXT_PUBLIC_SUPABASE_URL` | `https://tqfrnzjvyviykrbfzlxp.supabase.co` |
    | `SUPABASE_SERVICE_ROLE_KEY` | the service_role secret from the Supabase dashboard |
-   | `APP_PIN` | any PIN you will remember |
+   | `APP_PIN` | a passphrase you will remember — see below |
 
 3. **Redeploy.** Every push to the repo's default branch deploys automatically
    after that.
@@ -52,6 +52,13 @@ would ship it to the browser and hand anyone full access to the database.
 
 If `APP_PIN` is missing, a production deployment returns 503 rather than serving
 your training log to the internet. That is deliberate.
+
+**Make `APP_PIN` a passphrase, not four digits.** With Vercel Authentication
+turned off, this is the only thing between the internet and your log. The cookie
+stores a SHA-256 hash rather than the value itself, comparison is constant-time,
+and wrong guesses are slowed down — but none of that saves a four-digit PIN from
+being guessed. Something like `bench-105-in-may` is easy to type on a phone and
+not worth anyone's time to attack.
 
 On your phone, open the deployed URL and use *Add to Home Screen*; it installs
 as a standalone app and the session player keeps working without signal.
