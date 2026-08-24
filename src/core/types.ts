@@ -65,6 +65,8 @@ export interface Exercise {
   contraindications: PainArea[];
   /** Can external load be added (drives double progression vs rep progression). */
   loadable: boolean;
+  /** A scaled-down version of a movement; only used when nothing standard fits. */
+  regression?: boolean;
 }
 
 // ---------------------------------------------------------------- prescriptions

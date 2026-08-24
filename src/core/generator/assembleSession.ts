@@ -1,5 +1,5 @@
 import { getExercise } from '../library/exercises';
-import { find, pick, substitute, type LibraryContext } from '../library/query';
+import { find, pick, preferred, substitute, type LibraryContext } from '../library/query';
 import { prescriptionFor, waveFor } from '../progression/waves';
 import { resolveTrainingMax } from '../progression/trainingMax';
 import { fitToBudget } from '../timeBudget';
@@ -113,16 +113,16 @@ function pickT1(day: SkeletonDay, ctx: GenContext, state: WeekState, rng: () => 
   const exclude = overusedIds(state);
 
   const known = find(lib, { pattern, tier: 'T1', exclude }).filter((e) => ctx.trainingMaxes[e.id]);
-  const t1 = find(lib, { pattern, tier: 'T1', exclude });
+  const t1 = preferred(find(lib, { pattern, tier: 'T1', exclude }), ctx.equipment);
   const fallbackPattern: MovementPattern | null =
     pattern === 'pull_v' ? 'pull_h' : pattern === 'push_v' ? 'push_h' : null;
 
   const chosen =
     known[0] ??
     pick(t1, rng) ??
-    (fallbackPattern ? pick(find(lib, { pattern: fallbackPattern, tier: 'T1', exclude }), rng) : null) ??
-    pick(find(lib, { pattern, tier: 'T2', loadable: true, exclude }), rng) ??
-    pick(find(lib, { pattern, tier: ['T2', 'T3'], exclude }), rng);
+    (fallbackPattern ? pick(preferred(find(lib, { pattern: fallbackPattern, tier: 'T1', exclude }), ctx.equipment), rng) : null) ??
+    pick(preferred(find(lib, { pattern, tier: 'T2', loadable: true, exclude }), ctx.equipment), rng) ??
+    pick(preferred(find(lib, { pattern, tier: ['T2', 'T3'], exclude }), ctx.equipment), rng);
 
   if (!chosen) {
     throw new DomainError('NO_MAIN_LIFT', `No main lift available for ${pattern}`, { pattern });
@@ -138,12 +138,14 @@ function pickT2(day: SkeletonDay, t1: Exercise, ctx: GenContext, state: WeekStat
     const wantUni =
       (['squat', 'hinge', 'lunge'].includes(pattern) && !state.hasUnilateralLower) ||
       (['push_h', 'push_v', 'pull_h', 'pull_v'].includes(pattern) && !state.hasUnilateralUpper);
-    const uni = wantUni ? find(lib, { pattern, tier: 'T2', unilateral: true, exclude }) : [];
-    const chosen = pick(uni, rng) ?? pick(find(lib, { pattern, tier: 'T2', exclude }), rng)
-      ?? pick(find(lib, { pattern, tier: ['T2', 'T3'], exclude }), rng);
+    const uni = wantUni
+      ? preferred(find(lib, { pattern, tier: 'T2', unilateral: true, exclude }), ctx.equipment)
+      : [];
+    const chosen = pick(uni, rng) ?? pick(preferred(find(lib, { pattern, tier: 'T2', exclude }), ctx.equipment), rng)
+      ?? pick(preferred(find(lib, { pattern, tier: ['T2', 'T3'], exclude }), ctx.equipment), rng);
     if (chosen) return chosen;
   }
-  const any = pick(find(lib, { tier: 'T2', exclude }), rng);
+  const any = pick(preferred(find(lib, { tier: 'T2', exclude }), ctx.equipment), rng);
   if (!any) throw new DomainError('NO_SECONDARY', 'No secondary lift available', { archetype: day.archetype });
   return any;
 }
@@ -160,14 +162,14 @@ function pickT3Pair(ctx: GenContext, state: WeekState, rng: () => number): [Exer
   let d1: Exercise | null = null;
   if (pull <= push) {
     const pattern: MovementPattern = !state.hasPullV ? 'pull_v' : 'pull_h';
-    d1 = pick(find(lib, { pattern, tier: ['T2', 'T3'], exclude }), rng)
-      ?? pick(find(lib, { pattern: 'pull_h', tier: ['T2', 'T3'], exclude }), rng);
+    d1 = pick(preferred(find(lib, { pattern, tier: ['T2', 'T3'], exclude }), ctx.equipment), rng)
+      ?? pick(preferred(find(lib, { pattern: 'pull_h', tier: ['T2', 'T3'], exclude }), ctx.equipment), rng);
   } else {
     const pattern: MovementPattern = !state.hasPushV ? 'push_v' : 'push_h';
-    d1 = pick(find(lib, { pattern, tier: ['T2', 'T3'], exclude }), rng)
-      ?? pick(find(lib, { pattern: 'push_h', tier: ['T2', 'T3'], exclude }), rng);
+    d1 = pick(preferred(find(lib, { pattern, tier: ['T2', 'T3'], exclude }), ctx.equipment), rng)
+      ?? pick(preferred(find(lib, { pattern: 'push_h', tier: ['T2', 'T3'], exclude }), ctx.equipment), rng);
   }
-  if (!d1) d1 = pick(find(lib, { tier: 'T3', exclude }), rng);
+  if (!d1) d1 = pick(preferred(find(lib, { tier: 'T3', exclude }), ctx.equipment), rng);
   if (!d1) throw new DomainError('NO_ACCESSORY', 'No accessory movement available', {});
 
   const d1IsUpper = UPPER_PATTERNS.includes(d1.pattern);
@@ -179,31 +181,31 @@ function pickT3Pair(ctx: GenContext, state: WeekState, rng: () => number): [Exer
 
   // 1. The week must contain unilateral work on both halves of the body.
   if (!state.hasUnilateralLower) {
-    d2 = pick(find(lib, { pattern: ['lunge', 'isolation_lower'], tier: ['T2', 'T3'], unilateral: true, exclude: exclude2 }), rng);
+    d2 = pick(preferred(find(lib, { pattern: ['lunge', 'isolation_lower'], tier: ['T2', 'T3'], unilateral: true, exclude: exclude2 }), ctx.equipment), rng);
   }
   if (!d2 && !state.hasUnilateralUpper) {
-    d2 = pick(find(lib, {
+    d2 = pick(preferred(find(lib, {
       pattern: (['pull_h', 'push_v', 'push_h', 'isolation_upper'] as MovementPattern[]).filter((p) => p !== d1.pattern),
       tier: ['T2', 'T3'], unilateral: true, exclude: exclude2,
-    }), rng);
+    }), ctx.equipment), rng);
   }
   // 2. Then use the slot to close whatever push/pull gap D1 left behind.
   let d2Structural = false;
   if (!d2 && pullAfter < pushAfter && d1.pattern !== 'pull_h') {
-    d2 = pick(find(lib, { pattern: 'pull_h', tier: 'T3', exclude: exclude2 }), rng);
+    d2 = pick(preferred(find(lib, { pattern: 'pull_h', tier: 'T3', exclude: exclude2 }), ctx.equipment), rng);
     d2Structural = d2 != null;
   }
   if (!d2 && pushAfter * 1.45 < pullAfter && !['push_h', 'push_v'].includes(d1.pattern)) {
-    d2 = pick(find(lib, { pattern: ['push_h', 'push_v'], tier: ['T2', 'T3'], exclude: exclude2 }), rng);
+    d2 = pick(preferred(find(lib, { pattern: ['push_h', 'push_v'], tier: ['T2', 'T3'], exclude: exclude2 }), ctx.equipment), rng);
     d2Structural = d2 != null;
   }
   // 3. Otherwise pair the opposite half of the body, so nothing competes.
   if (!d2) {
     const pattern: MovementPattern[] = d1IsUpper ? ['isolation_lower', 'lunge'] : ['isolation_upper'];
-    d2 = pick(find(lib, { pattern, tier: 'T3', exclude: exclude2 }), rng)
-      ?? pick(find(lib, { pattern, tier: ['T2', 'T3'], exclude: exclude2 }), rng);
+    d2 = pick(preferred(find(lib, { pattern, tier: 'T3', exclude: exclude2 }), ctx.equipment), rng)
+      ?? pick(preferred(find(lib, { pattern, tier: ['T2', 'T3'], exclude: exclude2 }), ctx.equipment), rng);
   }
-  if (!d2) d2 = pick(find(lib, { pattern: ['trunk'], tier: 'T4', exclude: exclude2 }), rng);
+  if (!d2) d2 = pick(preferred(find(lib, { pattern: ['trunk'], tier: 'T4', exclude: exclude2 }), ctx.equipment), rng);
   if (!d2) throw new DomainError('NO_ACCESSORY', 'No second accessory available', {});
   return [d1, d2, d2Structural];
 }
@@ -216,7 +218,7 @@ function pickFinisher(weekNumber: number, ctx: GenContext, state: WeekState, rng
   const patterns: MovementPattern[] = state.hasCarry ? [wanted] : ['carry', wanted];
 
   for (const pattern of patterns) {
-    const ex = pick(find(lib, { pattern, tier: 'T4', exclude: overusedIds(state) }), rng);
+    const ex = pick(preferred(find(lib, { pattern, tier: 'T4', exclude: overusedIds(state) }), ctx.equipment), rng);
     if (!ex) continue;
     const sets: PrescribedSet[] =
       ex.metric === 'distance'
@@ -250,7 +252,7 @@ function assembleSpecial(args: AssembleArgs): PlannedSession {
   const blocks: SessionBlock[] = [buildPrimer(day.archetype, ctx)];
 
   if (day.archetype === 'AEROBIC-MOBILITY') {
-    const aerobic = pick(find(lib, { pattern: 'aerobic' }), rng)!;
+    const aerobic = pick(preferred(find(lib, { pattern: 'aerobic' }), ctx.equipment), rng)!;
     blocks.push({
       letter: 'B', kind: 'finisher', name: 'Zone 2',
       note: 'Nasal breathing the whole way. If you cannot hold a conversation, slow down.',
@@ -263,7 +265,7 @@ function assembleSpecial(args: AssembleArgs): PlannedSession {
       exercises: mob.map((ex, i) => blockExercise(`C${i + 1}`, ex, [repSet(ex.repHi, i === mob.length - 1 ? 30 : 0, ex.unilateral)], '3030')),
       estimatedSec: 0,
     });
-    const carry = pick(find(lib, { pattern: 'carry' }), rng);
+    const carry = pick(preferred(find(lib, { pattern: 'carry' }), ctx.equipment), rng);
     if (carry) {
       recordUse(state, carry, 0);
       blocks.push({

@@ -46,6 +46,22 @@ export function find(ctx: LibraryContext, opts: FindOptions = {}): Exercise[] {
   }).sort((a, b) => a.id.localeCompare(b.id));
 }
 
+const LOADING_KIT: Equipment[] = ['barbell', 'dumbbell', 'kettlebell', 'cable', 'trap_bar'];
+
+/**
+ * Narrow a candidate list to the options actually worth programming: drop
+ * regressions when a standard movement exists, and prefer loadable movements
+ * when the athlete has something to load. A bodyweight split squat is the right
+ * answer in a hotel room and the wrong one in a full gym.
+ */
+export function preferred(candidates: Exercise[], equipment: Equipment[]): Exercise[] {
+  const standard = candidates.filter((c) => !c.regression);
+  const pool = standard.length > 0 ? standard : candidates;
+  if (!equipment.some((item) => LOADING_KIT.includes(item))) return pool;
+  const loadable = pool.filter((c) => c.loadable);
+  return loadable.length > 0 ? loadable : pool;
+}
+
 /** Pick deterministically from a candidate list using the seeded rng. */
 export function pick<T>(candidates: T[], rng: () => number): T | null {
   if (candidates.length === 0) return null;

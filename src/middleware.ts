@@ -7,7 +7,15 @@ import { NextResponse, type NextRequest } from 'next/server';
  */
 export function middleware(request: NextRequest) {
   const pin = process.env.APP_PIN;
-  if (!pin) return NextResponse.next();
+  if (!pin) {
+    // Locally it is convenient to run without a lock. Deployed, an unset PIN
+    // would mean a public training log, so refuse to serve instead.
+    if (process.env.NODE_ENV !== 'production') return NextResponse.next();
+    return new NextResponse(
+      'APP_PIN is not set. Add it in your Vercel project settings and redeploy.',
+      { status: 503, headers: { 'content-type': 'text/plain' } },
+    );
+  }
 
   const { pathname } = request.nextUrl;
   if (pathname.startsWith('/unlock') || pathname.startsWith('/_next') || pathname.startsWith('/icon')) {

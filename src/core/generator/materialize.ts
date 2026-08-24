@@ -1,5 +1,5 @@
 import { getExercise } from '../library/exercises';
-import { find, pick, type LibraryContext } from '../library/query';
+import { find, pick, preferred, type LibraryContext } from '../library/query';
 import { prescriptionFor, waveFor } from '../progression/waves';
 import { resolveTrainingMax } from '../progression/trainingMax';
 import { fitToBudget } from '../timeBudget';
@@ -69,7 +69,7 @@ export function rematerializeWeek(
         if (isDeload && template.mainPattern) continue;
         // The aerobic day's Zone 2 piece is the point of that day — never rotate it.
         if (!template.mainPattern) { blocks.push(block); continue; }
-        blocks.push(rotateFinisher(block, weekNumber, template.dayNumber, lib, rng));
+        blocks.push(rotateFinisher(block, weekNumber, template.dayNumber, lib, rng, ctx));
         continue;
       }
 
@@ -107,7 +107,7 @@ function ensureCarry(
     (s) => s.mainPattern && s.blocks.some((b) => b.kind === 'finisher'),
   );
   if (targetIndex < 0) return sessions;
-  const carry = pick(find(lib, { pattern: 'carry', tier: 'T4' }), rng);
+  const carry = pick(preferred(find(lib, { pattern: 'carry', tier: 'T4' }), ctx.equipment), rng);
   if (!carry) return sessions;
 
   return sessions.map((s, i) => {
@@ -140,13 +140,14 @@ function rotateFinisher(
   dayNumber: number,
   lib: LibraryContext,
   rng: () => number,
+  ctx: GenContext,
 ): SessionBlock {
   const order: MovementPattern[] = ['carry', 'trunk', 'aerobic', 'carry'];
   const wanted = order[(weekNumber - 1 + dayNumber - 1) % 4]!;
   const current = getExercise(block.exercises[0]!.exerciseId);
   if (current.pattern === wanted) return block;
 
-  const ex = pick(find(lib, { pattern: wanted, tier: 'T4' }), rng);
+  const ex = pick(preferred(find(lib, { pattern: wanted, tier: 'T4' }), ctx.equipment), rng);
   if (!ex) return block;
 
   const sets: PrescribedSet[] =

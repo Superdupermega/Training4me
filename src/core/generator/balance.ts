@@ -1,5 +1,5 @@
 import { getExercise } from '../library/exercises';
-import { find, type LibraryContext } from '../library/query';
+import { find, preferred, type LibraryContext } from '../library/query';
 import type { MovementPattern, PlannedWeek } from '../types';
 import type { GenContext } from './context';
 
@@ -169,7 +169,7 @@ export function repairWeek(
     const candidatesSessions = week.sessions.filter((s) => hasSlot(s, slot));
     const target = candidatesSessions[candidatesSessions.length - 1];
     if (!target) return null;
-    const candidates = find(lib, opts).filter(
+    const candidates = preferred(find(lib, opts), ctx.equipment).filter(
       (c) => !target.blocks.some((b) => b.exercises.some((e) => e.exerciseId === c.id)),
     );
     const choice = candidates[Math.floor(rng() * candidates.length)] ?? candidates[0];
