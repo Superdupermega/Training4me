@@ -53,6 +53,17 @@ export const config = {
   // anything but a real JS response — a redirect to /unlock's HTML fails
   // registration outright, not gracefully), and static files that need no
   // lock at all.
+  //
+  // Excluding /unlock this way is only safe because src/app/unlock/page.tsx
+  // imports its server action from the dedicated src/server/unlockAction.ts
+  // module and nothing else. Next.js registers every export of a 'use
+  // server' file as a worker reachable from every route that imports any of
+  // them — if /unlock ever imports from actions.ts again (directly, or
+  // transitively through a component it renders), every action in that file
+  // becomes callable from this unauthenticated route again, cookie check or
+  // not. requireUnlocked() in every action (authGuard.ts) is the real
+  // authorization boundary; this matcher is only ever a convenience on top
+  // of it. See docs/07-PRODUCTION-REVIEW.md #1.
   matcher: [
     '/((?!_next/|unlock|offline|sw\\.js|favicon.ico|manifest.webmanifest|icon.*|.*\\.svg$).*)',
   ],

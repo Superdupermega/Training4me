@@ -1,6 +1,5 @@
 'use server';
 import { revalidateTag } from 'next/cache';
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { RoutineDay } from '@/core/builder/types';
 import { generateProgram } from '@/core/generator/generateProgram';
@@ -9,8 +8,8 @@ import { detectPRs } from '@/core/progression/prs';
 import { applyReadiness } from '@/core/progression/readiness';
 import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness } from '@/core/types';
 import * as analytics from './analytics';
+import { requireUnlocked } from './authGuard';
 import { exerciseContext, type ExerciseContext } from './exerciseContext';
-import { COOKIE_MAX_AGE, COOKIE_NAME, deriveToken, safeEqual } from './lock';
 import * as repo from './repo';
 import { TAGS } from './repo';
 import * as routines from './routines';
@@ -23,20 +22,9 @@ function fail(err: unknown): Result<never> {
   return { ok: false, error: message };
 }
 
-export async function unlock(formData: FormData): Promise<Result> {
-  const pin = process.env.APP_PIN;
-  const given = String(formData.get('pin') ?? '');
-  if (!pin || !safeEqual(await deriveToken(given), await deriveToken(pin))) {
-    // Slow down casual guessing. Not a substitute for a long PIN.
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    return { ok: false, error: 'Wrong PIN' };
-  }
-  (await cookies()).set(COOKIE_NAME, await deriveToken(pin), {
-    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production',
-    maxAge: COOKIE_MAX_AGE, path: '/',
-  });
-  return { ok: true };
-}
+// `unlock` itself lives in `./unlockAction` — its own module, imported by
+// nothing but `/unlock` — so that page's build output never lists any of
+// the actions below as one of its callable workers. See authGuard.ts.
 
 export interface OnboardingInput {
   daysPerWeek: number;
@@ -52,6 +40,7 @@ export interface OnboardingInput {
 
 export async function completeOnboarding(input: OnboardingInput): Promise<Result<{ programId: string }>> {
   try {
+    await requireUnlocked();
     await repo.saveProfile({
       days_per_week: input.daysPerWeek,
       experience: input.experience,
@@ -74,6 +63,7 @@ export async function completeOnboarding(input: OnboardingInput): Promise<Result
 
 /** Generate from whatever the profile currently says and make it the active block. */
 export async function buildProgram(startDate?: string): Promise<string> {
+  await requireUnlocked();
   const [profile, trainingMaxes, painFlags] = await Promise.all([
     repo.getProfile(), repo.getTrainingMaxes(), repo.activePainFlags(),
   ]);
@@ -108,6 +98,7 @@ export async function buildProgram(startDate?: string): Promise<string> {
 
 export async function regenerateProgram(): Promise<Result> {
   try {
+    await requireUnlocked();
     await buildProgram();
     return { ok: true };
   } catch (err) {
@@ -117,6 +108,7 @@ export async function regenerateProgram(): Promise<Result> {
 
 export async function beginSession(sessionId: string, readiness: Readiness | null): Promise<Result> {
   try {
+    await requireUnlocked();
     const [session, profile] = await Promise.all([repo.getSession(sessionId), repo.getProfile()]);
     if (!session) return { ok: false, error: 'Session not found' };
 
@@ -145,6 +137,7 @@ export async function beginSession(sessionId: string, readiness: Readiness | nul
 
 export async function logSets(sets: repo.LoggedSetRow[]): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.logSets(sets);
     revalidateTag(TAGS.logs);
     const pain = sets.find((s) => s.painFlag);
@@ -160,6 +153,7 @@ export async function logSets(sets: repo.LoggedSetRow[]): Promise<Result> {
 
 export async function finishSession(sessionId: string, actualSec: number, notes?: string): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.updateSession(sessionId, {
       status: 'completed', completed_at: new Date().toISOString(),
       actual_sec: actualSec, notes: notes ?? null,
@@ -187,6 +181,7 @@ export async function finishSession(sessionId: string, actualSec: number, notes?
 
 export async function skipSession(sessionId: string): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.updateSession(sessionId, { status: 'skipped' });
     revalidateTag(TAGS.sessions);
     return { ok: true };
@@ -207,6 +202,7 @@ async function recalibratePace(): Promise<void> {
 
 export async function updateSettings(patch: Record<string, unknown>): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.saveProfile(patch);
     revalidateTag(TAGS.profile);
     return { ok: true };
@@ -217,6 +213,7 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<Re
 
 export async function startNextBlock(): Promise<Result> {
   try {
+    await requireUnlocked();
     const { rollOverTrainingMaxes } = await import('./nextBlock');
     await rollOverTrainingMaxes();
     revalidateTag(TAGS.profile);
@@ -235,6 +232,7 @@ export async function goToPlan(): Promise<never> {
 
 export async function createRoutine(input: routines.CreateRoutineInput): Promise<Result<{ routineId: string }>> {
   try {
+    await requireUnlocked();
     const routineId = await routines.createRoutine(input);
     revalidateTag(ROUTINE_TAG);
     return { ok: true, data: { routineId } };
@@ -245,6 +243,7 @@ export async function createRoutine(input: routines.CreateRoutineInput): Promise
 
 export async function renameRoutine(routineId: string, name: string): Promise<Result> {
   try {
+    await requireUnlocked();
     await routines.renameRoutine(routineId, name);
     revalidateTag(ROUTINE_TAG);
     return { ok: true };
@@ -255,6 +254,7 @@ export async function renameRoutine(routineId: string, name: string): Promise<Re
 
 export async function archiveRoutine(routineId: string): Promise<Result> {
   try {
+    await requireUnlocked();
     await routines.archiveRoutine(routineId);
     revalidateTag(ROUTINE_TAG);
     return { ok: true };
@@ -265,6 +265,7 @@ export async function archiveRoutine(routineId: string): Promise<Result> {
 
 export async function saveRoutineDays(routineId: string, days: RoutineDay[]): Promise<Result> {
   try {
+    await requireUnlocked();
     await routines.saveRoutineDays(routineId, days);
     revalidateTag(ROUTINE_TAG);
     return { ok: true };
@@ -276,6 +277,7 @@ export async function saveRoutineDays(routineId: string, days: RoutineDay[]): Pr
 /** Materialises the routine and makes it the active program (replaces any other active one). */
 export async function scheduleRoutine(routineId: string): Promise<Result<{ programId: string }>> {
   try {
+    await requireUnlocked();
     const [routine, profile, trainingMaxes] = await Promise.all([
       routines.getRoutine(routineId), repo.getProfile(), repo.getTrainingMaxes(),
     ]);
@@ -298,6 +300,7 @@ export async function scheduleRoutine(routineId: string): Promise<Result<{ progr
 /** Seeds a new routine from the currently active generated program's week one — the fast path most people will actually use. */
 export async function duplicateActiveProgramAsRoutine(name: string): Promise<Result<{ routineId: string }>> {
   try {
+    await requireUnlocked();
     const program = await repo.getActiveProgram();
     if (!program) return { ok: false, error: 'No active program to duplicate' };
     const sessions = await repo.listSessions(program.id);
@@ -349,6 +352,7 @@ export async function getExerciseContexts(
   opts?: { percentTm?: number; increment?: number },
 ): Promise<Result<Record<string, ExerciseContext>>> {
   try {
+    await requireUnlocked();
     const data = await exerciseContext(exerciseIds, opts);
     return { ok: true, data };
   } catch (err) {
@@ -360,6 +364,7 @@ export async function getExerciseContexts(
 
 export async function getE1rmSeries(exerciseId: string): Promise<Result<Awaited<ReturnType<typeof analytics.e1rmSeries>>>> {
   try {
+    await requireUnlocked();
     const data = await analytics.e1rmSeries(exerciseId);
     return { ok: true, data };
   } catch (err) {

@@ -6,7 +6,7 @@ import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Suspense, useState } from 'react';
-import { unlock } from '@/server/actions';
+import { unlock } from '@/server/unlockAction';
 
 function UnlockForm() {
   const router = useRouter();
@@ -34,9 +34,10 @@ function UnlockForm() {
           <Typography color="text.secondary">Heavy basics, done well, in under an hour.</Typography>
         </Box>
         <TextField
-          name="pin" type="password" label="PIN" autoFocus fullWidth
+          name="pin" type="password" label="Passphrase" autoFocus fullWidth
+          autoComplete="current-password"
           error={Boolean(error)} helperText={error ?? ' '}
-          slotProps={{ htmlInput: { inputMode: 'numeric', 'aria-label': 'PIN' } }}
+          slotProps={{ htmlInput: { 'aria-label': 'Passphrase' } }}
         />
         <Button type="submit" size="large" fullWidth disabled={pending}>
           {pending ? 'Checking…' : 'Unlock'}
