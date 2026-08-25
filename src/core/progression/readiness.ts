@@ -13,10 +13,14 @@ export function readinessScore(r: Readiness): number {
   return r.sleep + r.soreness + r.stress;
 }
 
+// Each of the three sliders defaults to its own midpoint (3), so an untouched
+// dialog scores 9. That has to land on "normal" — otherwise skipping the
+// question outright beats answering it honestly, which defeats the point of
+// asking at all.
 export function readinessBand(score: number): ReadinessEffect {
   if (score >= 13) return { score, loadMultiplier: 1, message: 'Green light. Go get it.', changes: [] };
-  if (score >= 10) return { score, loadMultiplier: 1, message: 'Normal day. Stick to the plan.', changes: [] };
-  if (score >= 7) return { score, loadMultiplier: 0.93, message: 'Back off a touch. Still worth doing.', changes: [] };
+  if (score >= 9) return { score, loadMultiplier: 1, message: 'Normal day. Stick to the plan.', changes: [] };
+  if (score >= 6) return { score, loadMultiplier: 0.93, message: 'Back off a touch. Still worth doing.', changes: [] };
   return { score, loadMultiplier: 0.85, message: 'Low battery. Move well, get out.', changes: [] };
 }
 

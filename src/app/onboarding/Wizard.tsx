@@ -47,7 +47,13 @@ const TOGGLES: Equipment[] = [
   'dip_station', 'bands', 'cardio_machine', 'sled', 'box', 'trap_bar', 'cable',
 ];
 
-export function OnboardingWizard({ bodyweightKg }: { bodyweightKg: number }) {
+interface Props {
+  bodyweightKg: number;
+  isEdit?: boolean;
+  currentTrainingMaxes?: Record<string, number>;
+}
+
+export function OnboardingWizard({ bodyweightKg, isEdit = false, currentTrainingMaxes = {} }: Props) {
   const router = useRouter();
   const [step, setStep] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -96,9 +102,13 @@ export function OnboardingWizard({ bodyweightKg }: { bodyweightKg: number }) {
     setPending(true);
     setError(null);
     const bw = Number(bodyweight) || bodyweightKg;
+    // Typed numbers always win. Otherwise: first-time onboarding needs a
+    // starting estimate, but re-running this wizard just to change gear or
+    // days must never silently replace real, trained maxes with a fresh
+    // bodyweight guess — so an edit with nothing typed leaves them untouched.
     const maxes = Object.keys(trainingMaxes).length
       ? trainingMaxes
-      : defaultTrainingMaxes(bw, experience ?? 'intermediate');
+      : isEdit ? {} : defaultTrainingMaxes(bw, experience ?? 'intermediate');
 
     const result = await completeOnboarding({
       daysPerWeek: daysPerWeek ?? 3,
@@ -214,7 +224,9 @@ export function OnboardingWizard({ bodyweightKg }: { bodyweightKg: number }) {
         <Stack spacing={2}>
           <Typography variant="h1">How strong are you right now?</Typography>
           <Typography color="text.secondary">
-            Skip anything you do not know. We start conservatively and week one recalibrates.
+            {isEdit
+              ? 'Leave anything blank to keep what you already have — nothing here gets overwritten unless you type a new number.'
+              : 'Skip anything you do not know. We start conservatively and week one recalibrates.'}
           </Typography>
           <TextField
             label="Bodyweight (kg)" value={bodyweight} onChange={(e) => setBodyweight(e.target.value)}
@@ -249,9 +261,13 @@ export function OnboardingWizard({ bodyweightKg }: { bodyweightKg: number }) {
                     onChange={(e) => setEntry(anchor.id, { orm: e.target.value })}
                     slotProps={{ htmlInput: { inputMode: 'decimal' } }} />
                 )}
-                {tm != null && (
+                {tm != null ? (
                   <Typography variant="body2" color="primary" sx={{ mt: 1 }}>
                     Training max {tm} kg — week one starts at {Math.round(tm * 0.7 * 2) / 2} kg
+                  </Typography>
+                ) : isEdit && currentTrainingMaxes[anchor.id] != null && (
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                    Current training max: {currentTrainingMaxes[anchor.id]} kg — kept as is unless you enter a new number above.
                   </Typography>
                 )}
               </Card>

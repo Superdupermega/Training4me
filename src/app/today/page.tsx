@@ -42,9 +42,15 @@ export default async function TodayPage() {
   const sessions = await listSessions(program.id);
   const today = new Date().toISOString().slice(0, 10);
 
-  const todaySession = sessions.find((s) => s.scheduledDate === today && s.status !== 'completed');
-  const nextSession = sessions.find((s) => s.scheduledDate >= today && s.status === 'planned');
-  const featured = todaySession ?? nextSession;
+  // The oldest session that isn't done, in schedule order — never just
+  // "today or later". A missed day must stay visible and actionable, not
+  // fall through the gap between "today" and "next planned" and quietly
+  // strand the whole block (nothing else ever completes the last session).
+  const featured = sessions.find((s) => s.status === 'planned' || s.status === 'in_progress');
+  const featuredStatus: 'today' | 'next' | 'overdue' | null = !featured ? null
+    : featured.scheduledDate < today ? 'overdue'
+      : featured.scheduledDate === today ? 'today'
+        : 'next';
   const currentWeek = featured?.weekNumber
     ?? (sessions.length ? Math.max(...sessions.map((s) => s.weekNumber)) : 1);
   const weekSessions = sessions.filter((s) => s.weekNumber === currentWeek);
@@ -67,8 +73,8 @@ export default async function TodayPage() {
 
           {allDone ? (
             <NextBlockCard />
-          ) : featured ? (
-            <TodayCard session={featured} isToday={Boolean(todaySession)} />
+          ) : featured && featuredStatus ? (
+            <TodayCard session={featured} status={featuredStatus} />
           ) : null}
 
           {weekSessions.some((s) => s.isDeload) && (

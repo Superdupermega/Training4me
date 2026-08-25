@@ -6,19 +6,33 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Link from 'next/link';
 import { mainLiftOf, minutes, WEEKDAY } from '@/components/format';
+import { SkipSessionButton } from '@/components/today/SkipSessionButton';
 import type { SessionRow } from '@/server/repo';
 
-export function TodayCard({ session, isToday }: { session: SessionRow; isToday: boolean }) {
+type FeaturedStatus = 'today' | 'next' | 'overdue';
+
+const LABEL: Record<FeaturedStatus, (session: SessionRow) => string> = {
+  today: () => 'Today',
+  next: (session) => `Next · ${WEEKDAY[session.weekday]}`,
+  overdue: (session) => `Missed · ${WEEKDAY[session.weekday]}`,
+};
+
+export function TodayCard({ session, status }: { session: SessionRow; status: FeaturedStatus }) {
   const main = mainLiftOf(session.blocks);
   return (
     <Card sx={{ p: 2.5, bgcolor: 'primaryContainer.main', color: 'primaryContainer.contrastText' }}>
       <Stack spacing={1.5}>
         <Box>
           <Typography variant="overline" sx={{ opacity: 0.85 }}>
-            {isToday ? 'Today' : `Next · ${WEEKDAY[session.weekday]}`}
+            {LABEL[status](session)}
           </Typography>
           <Typography variant="h1">{session.title}</Typography>
         </Box>
+        {status === 'overdue' && (
+          <Typography sx={{ opacity: 0.9 }}>
+            This was scheduled for {WEEKDAY[session.weekday]}. Do it now, or skip it and keep the block moving.
+          </Typography>
+        )}
         {main && (
           <Box>
             <Typography variant="h3">{main.name}</Typography>
@@ -46,6 +60,7 @@ export function TodayCard({ session, isToday }: { session: SessionRow; isToday: 
         >
           {session.status === 'in_progress' ? 'Continue session' : 'Start session'}
         </Button>
+        {status === 'overdue' && <SkipSessionButton sessionId={session.id} />}
       </Stack>
     </Card>
   );
