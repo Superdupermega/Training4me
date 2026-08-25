@@ -164,10 +164,6 @@ export const theme = createTheme({
         },
       },
     },
-    // A square ripple on a round button is one of the more obvious "this
-    // wasn't designed" tells — round it to match the pill/rounded language
-    // used everywhere else (buttons, cards, chips).
-    MuiIconButton: { styleOverrides: { root: { borderRadius: 12 } } },
     MuiDialog: { styleOverrides: { paper: { borderRadius: 20 } } },
   },
 });

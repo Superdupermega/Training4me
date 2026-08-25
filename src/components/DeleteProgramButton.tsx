@@ -30,6 +30,7 @@ export function DeleteProgramButton({ programName }: { programName: string }) {
       <Button
         variant="text" color="error" size="large" startIcon={<DeleteOutlineIcon />}
         onClick={() => setOpen(true)}
+        sx={{ alignSelf: 'flex-start' }}
       >
         Delete program
       </Button>

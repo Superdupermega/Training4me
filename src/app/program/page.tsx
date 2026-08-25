@@ -37,7 +37,7 @@ export default async function ProgramPage() {
               Answer six questions and you will have a full block, day by day — or build one
               yourself, exercise by exercise, from the exercise library.
             </Typography>
-            <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
               <Button component={Link} href="/onboarding?edit=1" size="large">Build a plan for me</Button>
               <Button component={Link} href="/program/builder" size="large" variant="outlined">
                 Build my own program
@@ -65,13 +65,21 @@ export default async function ProgramPage() {
             </Stack>
           </Box>
 
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
-            <Button component={Link} href="/program/builder" variant="outlined" size="large">
-              Build my own program
-            </Button>
-            {!(program.input as unknown as { routineId?: string } | null)?.routineId && (
-              <DuplicateAsRoutineButton programName={program.name} />
-            )}
+          <Stack spacing={1.5}>
+            {/* Two comparable-weight actions — same size/variant, so they line
+                up edge-to-edge stacked on mobile and sit side by side once
+                there's room, rather than each hugging its own text width. */}
+            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              <Button component={Link} href="/program/builder" variant="outlined" size="large">
+                Build my own program
+              </Button>
+              {!(program.input as unknown as { routineId?: string } | null)?.routineId && (
+                <DuplicateAsRoutineButton programName={program.name} />
+              )}
+            </Stack>
+            {/* Deliberately its own row, not a third item in the group above —
+                a destructive action shouldn't share visual weight with the
+                two build actions. */}
             <DeleteProgramButton programName={program.name} />
           </Stack>
 
