@@ -66,10 +66,24 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
   }, []);
 
   // Keep the screen on while the player is open; harmless where unsupported.
+  // A screen wake lock is released by the browser automatically whenever the
+  // document goes hidden — locking the phone, switching to a music app — and
+  // does not come back on its own. Without re-requesting it on
+  // visibilitychange this only ever covered the very first time the screen
+  // would have slept, then behaved as if it had never been requested at all
+  // for the rest of the workout. See docs/07-PRODUCTION-REVIEW.md #11.
   useEffect(() => {
     let sentinel: WakeLockSentinel | null = null;
-    navigator.wakeLock?.request('screen').then((s) => { sentinel = s; }).catch(() => {});
-    return () => { sentinel?.release().catch(() => {}); };
+    const acquire = () => {
+      if (document.visibilityState !== 'visible') return;
+      navigator.wakeLock?.request('screen').then((s) => { sentinel = s; }).catch(() => {});
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => {
+      document.removeEventListener('visibilitychange', acquire);
+      sentinel?.release().catch(() => {});
+    };
   }, []);
 
   const flush = useCallback(async () => {
