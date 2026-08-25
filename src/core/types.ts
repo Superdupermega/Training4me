@@ -1,4 +1,5 @@
 // Domain vocabulary. Single source of truth for every enum in the app.
+import type { ExerciseStyle, Muscle } from './library/muscles';
 
 export const PATTERNS = [
   'squat', 'hinge', 'lunge', 'push_h', 'push_v', 'pull_h', 'pull_v',
@@ -15,6 +16,10 @@ export type Complexity = (typeof COMPLEXITIES)[number];
 export const EQUIPMENT = [
   'barbell', 'rack', 'bench', 'dumbbell', 'kettlebell', 'pullup_bar', 'dip_station',
   'bands', 'cardio_machine', 'sled', 'box', 'trap_bar', 'cable', 'none',
+  // Added for the library expansion (chunk 16) — full_gym only, deliberately
+  // not added to the smaller equipment profiles: doing so would change which
+  // movements the generator can reach for those profiles.
+  'rings', 'landmine', 'sandbag', 'machine', 'ghd',
 ] as const;
 export type Equipment = (typeof EQUIPMENT)[number];
 
@@ -67,6 +72,40 @@ export interface Exercise {
   loadable: boolean;
   /** A scaled-down version of a movement; only used when nothing standard fits. */
   regression?: boolean;
+
+  // -------------------------------------------------------------- library (chunk 16)
+  /** 1–3 muscles that make this movement worth programming. Required. */
+  primaryMuscles: Muscle[];
+  /** 0–5 muscles that get real but secondary work. */
+  secondaryMuscles: Muscle[];
+  mechanic: 'compound' | 'isolation';
+  force: 'push' | 'pull' | 'static' | 'carry' | 'locomotion';
+  styles: ExerciseStyle[];
+  /**
+   * Requires supervision/skill the generator should never prescribe
+   * unsupervised (a kettlebell snatch, a pistol squat). Always paired with
+   * `complexity: 'advanced'` and `inGeneratorPool: false` — enforced by a
+   * test, not just convention. The exercise browser and program builder can
+   * still surface it; only the automated generator is barred.
+   */
+  skillGated?: boolean;
+  /** 2–5 imperative how-to steps, for the exercise detail page. */
+  howTo?: string[];
+  /**
+   * Loads too many distinct muscle groups to earn a home in any single one
+   * (a get-up, a bear crawl) — the browser's "Full body" bucket, which
+   * cannot otherwise be derived from `primaryMuscles`.
+   */
+  isFullBody?: boolean;
+  /**
+   * Omitted or true = the generator may select this movement. Every
+   * exercise added by the library expansion ships `false`: visible in the
+   * browser and the program builder, invisible to the generator, so growing
+   * the library from ~90 to ~300 movements cannot silently reshape a
+   * generated program. Opt individual movements in later, deliberately, one
+   * at a time, re-running the 150-combination matrix each time.
+   */
+  inGeneratorPool?: boolean;
 }
 
 // ---------------------------------------------------------------- prescriptions

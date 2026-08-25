@@ -204,3 +204,77 @@ chunks 17 and 18 replace the stub body, not the route or its nav entry.
 
 **Blocked:** nothing. `pnpm test` (213/213), `pnpm lint`, `pnpm typecheck`,
 `pnpm build` all clean.
+
+## Chunk 16 — Exercise library: muscle taxonomy, expansion, Filly set — 2026-08-25
+**Landed:** The muscle-group taxonomy the app was completely missing, and the
+library grown from 101 to 286 movements without changing the generator at
+all.
+
+- New `src/core/library/muscles.ts`: 25 `Muscle`s, 12 `MuscleGroup`s
+  (chest/back/shoulders/arms/core/quads/hamstrings_glutes/calves/carry_grip/
+  cardio/mobility/full_body), `groupsFor()` deriving groups from
+  `primaryMuscles`. `outlineVariant`-style redundancy avoided deliberately:
+  mobility/cardio/full_body aren't muscle-led categories, so `browseGroupsFor`
+  in `query.ts` layers pattern- and `isFullBody`-driven exceptions on top
+  rather than forcing them into the pure muscle taxonomy.
+- `Exercise` gained `primaryMuscles` (required), `secondaryMuscles`,
+  `mechanic`, `force`, `styles`, `skillGated?`, `howTo?`, `isFullBody?`, and
+  **`inGeneratorPool?`** — the containment mechanism the whole chunk depends
+  on. `query.ts`'s `isPermitted()` (shared by `find()` and `substitute()`)
+  now rejects `inGeneratorPool === false` outright, so a library-only
+  movement is structurally unreachable by the generator, not just
+  conventionally excluded.
+- The old blunt banned-word test (`'snatch','clean','muscle-up',…` as
+  substrings of the id) is gone, replaced by an assertion that every
+  `skillGated` movement is `complexity: 'advanced'` **and**
+  `inGeneratorPool: false`. This unblocked KB clean, KB snatch, pistol squat,
+  muscle-up and handstand push-up as real library entries the builder and
+  browser can reach, while the generator still can't select any of them —
+  demonstrated by five real entries in `full-body.ts`.
+- `exercises.ts` (one 159-line file) replaced by `exercises/` — twelve files,
+  one per muscle group, plus `helpers.ts` (the `mk()` builder) and
+  `index.ts` (concatenates, exports `EXERCISES`/`BY_ID`/`getExercise` — same
+  public shape, so every existing importer needed zero changes). All 101
+  pre-existing movements were re-filed by primary muscle group (not just
+  moved — each also gained real muscle/mechanic/force data) rather than kept
+  in their old pattern-based grouping; chunk-21 defect #6 (a lunge-pattern
+  movement filed under a hinge comment block) was fixed in the process.
+- 185 new movements added, every one `inGeneratorPool: false`. New
+  `Equipment` values (`rings`, `landmine`, `sandbag`, `machine`, `ghd`) added
+  to `full_gym` only, exactly as planned — no smaller equipment profile's
+  reachable movements changed.
+- 63 movements tagged `functional_bodybuilding` (target was ≥ 50): tempo
+  squats, Zercher/landmine/sandbag work, bottoms-up KB pressing, Meadows/seal/
+  tempo ring rows, kickstand RDL, B-stance hip thrust, Copenhagen plank,
+  Turkish get-up, devil's press, and more.
+- `exercises.test.ts` rewritten: taxonomy validation (every muscle real, no
+  primary/secondary overlap), per-group minimum counts, the FB-set count, a
+  tripwire pinning the generator pool at exactly 101, an `~280` floor on
+  total library size, and a new substitution test proving `substitute()`
+  never reaches a non-pool movement for any equipment profile.
+
+**Verified:** all 221 tests pass, including the unmodified 150-combination
+matrix — proof the backfill preserved every pre-existing movement's original
+equipment/tier/alternatives/contraindications exactly, since the matrix test
+would have caught any drift. `pnpm lint`, `pnpm typecheck`, `pnpm build` all
+clean.
+
+**Deviated:** three real ones, each recorded in `DECISIONS.md` — the actual
+pre-expansion count was 101 (not the plan's ~93 estimate), the library is
+organised by muscle group rather than movement pattern, and `howTo` was
+written sparingly rather than for all ~286 entries (it's explicitly optional;
+`cue` already carries the one-line coaching point everything today actually
+uses). Total landed at 286, not exactly 300 — the plan's own per-group
+minimums sum to 314, of which 101 pre-existed; the gap was made up with two
+extra skill-gated entries rather than padded further, per the plan's own
+"a short, honest list beats padding."
+
+**Next chunk must know:** `browseGroupsFor(exercise)` in `query.ts` is the
+one function chunk 17's browser should call to place a movement into its
+muscle-group buckets — do not re-derive this in the UI layer. Bundle sizes
+grew (`/session/[id]` 214→226 kB, `/profile/settings` 186→198 kB) because the
+larger library ships to the client wherever `getExercise`/`EXERCISES` is
+imported client-side — worth a look in chunk 21's budget pass, not a blocker
+now.
+
+**Blocked:** nothing.

@@ -1,6 +1,7 @@
 import type { Complexity, Equipment, Exercise, MovementPattern, PainArea, Tier } from '../types';
 import { NoSubstituteError } from '../types';
 import { EXERCISES, getExercise } from './exercises';
+import { groupsFor, type MuscleGroup } from './muscles';
 
 const COMPLEXITY_RANK: Record<Complexity, number> = { simple: 0, moderate: 1, advanced: 2 };
 
@@ -15,6 +16,11 @@ export function isAvailable(ex: Exercise, equipment: Equipment[]): boolean {
 }
 
 function isPermitted(ex: Exercise, ctx: LibraryContext): boolean {
+  // Library-only movements (chunk 16) are visible in the browser and the
+  // program builder but never reachable by the generator or its substitution
+  // ladder — this is the one gate both paths share, so there is nowhere for
+  // it to leak through.
+  if (ex.inGeneratorPool === false) return false;
   if (!isAvailable(ex, ctx.equipment)) return false;
   if (!ctx.allowAdvanced && COMPLEXITY_RANK[ex.complexity] > COMPLEXITY_RANK.moderate) return false;
   if (ex.contraindications.some((area) => ctx.painFlags.includes(area))) return false;
@@ -106,4 +112,21 @@ export function substitute(
 
 export function patternHasAny(ctx: LibraryContext, pattern: MovementPattern): boolean {
   return find(ctx, { pattern }).length > 0;
+}
+
+/**
+ * Which browse-by-muscle-group buckets an exercise belongs in. `groupsFor`
+ * in `./muscles` only derives from `primaryMuscles`, which cannot place a
+ * mobility drill or a full-body movement — those aren't muscle-led
+ * categories. This adds the two pattern-driven exceptions on top; kept here
+ * rather than in `muscles.ts` so that file stays a pure taxonomy definition
+ * with no dependency on the exercise domain.
+ */
+export function browseGroupsFor(ex: Exercise): MuscleGroup[] {
+  const fromMuscles = groupsFor(ex.primaryMuscles);
+  const extra: MuscleGroup[] = [];
+  if (ex.pattern === 'mobility') extra.push('mobility');
+  if (ex.pattern === 'aerobic') extra.push('cardio');
+  if (ex.isFullBody) extra.push('full_body');
+  return [...new Set([...fromMuscles, ...extra])];
 }
