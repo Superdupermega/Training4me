@@ -183,9 +183,13 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
       </Stack>
 
       {blocks.map((block) => {
+        // Same rule as `totals` above: ramp sets are warm-ups, not working
+        // sets — a block with one could read "12/12 sets" in the header
+        // while its own accordion still showed as not done, disagreeing
+        // with itself. See docs/07-PRODUCTION-REVIEW.md #14.
         const blockSets = block.exercises.flatMap((e) =>
-          e.sets.map((s) => key(block.letter, e.slot, s.setNumber)));
-        const blockDone = blockSets.every((k) => logged[k]);
+          e.sets.filter((s) => s.kind !== 'ramp').map((s) => key(block.letter, e.slot, s.setNumber)));
+        const blockDone = blockSets.length > 0 && blockSets.every((k) => logged[k]);
         return (
           <Accordion
             key={block.letter}

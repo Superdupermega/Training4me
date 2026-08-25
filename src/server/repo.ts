@@ -290,11 +290,19 @@ export const historyForExercise = unstable_cache(
   { tags: [TAGS.logs] },
 );
 
+/**
+ * `before`, when given, only returns sessions scheduled strictly earlier
+ * than that date — the cursor /history pages through older history with,
+ * rather than the hard 40-session cutoff that used to make training from
+ * roughly three months back permanently unreachable through the UI (the
+ * rows stayed in Postgres; nothing in the app would ever show them again).
+ * See docs/07-PRODUCTION-REVIEW.md #13.
+ */
 export const recentSessions = unstable_cache(
-  async (limit = 40): Promise<SessionRow[]> => {
-    const { data, error } = await db()
-      .from('t4m_session').select('*').in('status', ['completed', 'skipped'])
-      .order('scheduled_date', { ascending: false }).limit(limit);
+  async (limit = 40, before?: string): Promise<SessionRow[]> => {
+    let query = db().from('t4m_session').select('*').in('status', ['completed', 'skipped']);
+    if (before) query = query.lt('scheduled_date', before);
+    const { data, error } = await query.order('scheduled_date', { ascending: false }).limit(limit);
     if (error) throw new Error(error.message);
     return (data ?? []).map(toSession);
   },
