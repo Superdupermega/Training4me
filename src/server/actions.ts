@@ -231,6 +231,31 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<Re
   }
 }
 
+/**
+ * Bodyweight was previously a single scalar set once at onboarding and never
+ * revisited — for a strength app it is half of every meaningful ratio.
+ * Logs today's entry (upserted, so logging again the same day corrects it
+ * rather than duplicating), and keeps `t4m_profile.bodyweight_kg` — read
+ * directly by load calculations elsewhere — in sync with the latest value.
+ * See docs/07-PRODUCTION-REVIEW.md #19.
+ */
+export async function logBodyweight(kg: number): Promise<Result> {
+  try {
+    await requireUnlocked();
+    if (!Number.isFinite(kg) || kg <= 0) return { ok: false, error: 'Enter a real bodyweight' };
+    const profile = await repo.getProfile();
+    await Promise.all([
+      repo.logBodyweight(kg, today(profile.timezone)),
+      repo.saveProfile({ bodyweight_kg: kg }),
+    ]);
+    revalidateTag(TAGS.bodyweight);
+    revalidateTag(TAGS.profile);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function startNextBlock(): Promise<Result> {
   try {
     await requireUnlocked();

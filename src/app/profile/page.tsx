@@ -14,25 +14,25 @@ import { today } from '@/core/dates';
 import {
   calendarActivity, consistency, e1rmSeries, volumeByMuscleGroup, weeklyVolume,
 } from '@/server/analytics';
-import { getProfile, getTrainingMaxes, listPRs } from '@/server/repo';
+import { getProfile, getTrainingMaxes, listPRs, recentBodyweights } from '@/server/repo';
 
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_LIFT = 'back-squat';
 
 /**
- * The analysis home: Strength / Volume / Consistency / Records (chunk 20).
- * A Body tab (bodyweight over time) was scoped out of this pass — it needs
- * its own table and is the smallest of the five originally sketched tabs;
- * see docs/DECISIONS.md.
+ * The analysis home: Strength / Volume / Consistency / Body / Records.
+ * Body (bodyweight over time) was scoped out of the original chunk 20 pass
+ * for needing its own table (docs/DECISIONS.md, 2026-08-25) — that table now
+ * exists (docs/07-PRODUCTION-REVIEW.md #19).
  */
 export default async function ProfilePage() {
   const profile = await getProfile();
-  const [trainingMaxes, prs, weekly, byMuscleGroup, consistencySummary, calendar, strengthSeries] =
+  const [trainingMaxes, prs, weekly, byMuscleGroup, consistencySummary, calendar, strengthSeries, bodyweights] =
     await Promise.all([
       getTrainingMaxes(profile.timezone), listPRs(),
       weeklyVolume(8), volumeByMuscleGroup(4), consistency(profile.timezone), calendarActivity(84),
-      e1rmSeries(DEFAULT_LIFT),
+      e1rmSeries(DEFAULT_LIFT), recentBodyweights(),
     ]);
 
   return (
@@ -83,6 +83,7 @@ export default async function ProfilePage() {
             paceFactor={profile.paceFactor}
             prs={prs}
             trainingMaxes={trainingMaxes}
+            bodyweights={bodyweights}
             today={today(profile.timezone)}
           />
         </Stack>

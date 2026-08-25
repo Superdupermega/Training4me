@@ -30,7 +30,10 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   if (session.status === 'completed') {
     const prs = await listPRsForSession(id);
     return (
-      <SessionSummary session={session} increment={increment} initialLogged={initialLogged} prs={prs} />
+      <SessionSummary
+        session={session} increment={increment} initialLogged={initialLogged} prs={prs}
+        microPlates={profile.microPlates}
+      />
     );
   }
 
@@ -47,6 +50,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       increment={increment}
       initialLogged={initialLogged}
       contexts={contexts}
+      microPlates={profile.microPlates}
     />
   );
 }

@@ -38,9 +38,10 @@ interface Props {
   increment: number;
   initialLogged: Record<string, LoggedValue>;
   contexts?: Record<string, ExerciseContext>;
+  microPlates?: boolean;
 }
 
-export function SessionPlayer({ session, increment, initialLogged, contexts }: Props) {
+export function SessionPlayer({ session, increment, initialLogged, contexts, microPlates = false }: Props) {
   const router = useRouter();
   const [logged, setLogged] = useState<Record<string, LoggedValue>>(initialLogged);
   const [blocks, setBlocks] = useState<SessionBlock[]>(session.blocks);
@@ -236,6 +237,8 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
                           set={set}
                           logged={logged[id]}
                           increment={increment}
+                          barbell={exercise.equipment.includes('barbell')}
+                          microPlates={microPlates}
                           expanded={expandedSet === id}
                           onExpand={() => setExpandedSet((prev) => (prev === id ? null : id))}
                           onComplete={(value) =>

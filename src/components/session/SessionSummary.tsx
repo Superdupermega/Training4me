@@ -36,6 +36,7 @@ interface Props {
   increment: number;
   initialLogged: Record<string, LoggedValue>;
   prs: Pr[];
+  microPlates?: boolean;
 }
 
 /**
@@ -50,7 +51,7 @@ interface Props {
  * set here can never create a duplicate — and re-runs PR detection (#8),
  * so fixing a mistyped weight can retroactively award or revoke a PR.
  */
-export function SessionSummary({ session, increment, initialLogged, prs }: Props) {
+export function SessionSummary({ session, increment, initialLogged, prs, microPlates = false }: Props) {
   const router = useRouter();
   const [logged, setLogged] = useState<Record<string, LoggedValue>>(initialLogged);
   const [expandedSet, setExpandedSet] = useState<string | null>(null);
@@ -164,6 +165,8 @@ export function SessionSummary({ session, increment, initialLogged, prs }: Props
                           set={set}
                           logged={logged[id]}
                           increment={increment}
+                          barbell={exercise.equipment.includes('barbell')}
+                          microPlates={microPlates}
                           expanded={expandedSet === id}
                           onExpand={() => setExpandedSet((prev) => (prev === id ? null : id))}
                           onComplete={(value) =>

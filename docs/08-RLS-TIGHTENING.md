@@ -60,13 +60,16 @@ begin
 end $$;
 ```
 
-This covers all 11 `t4m_` tables (`t4m_profile`, `t4m_session`,
+The loop discovers tables by name pattern at execution time, so it covers
+every `t4m_` table that exists when it runs, not a fixed list written down
+when this doc was drafted — currently 12: `t4m_profile`, `t4m_session`,
 `t4m_logged_set`, `t4m_program`, `t4m_pr`, `t4m_pain_flag`, `t4m_training_max`,
-`t4m_routine`, `t4m_routine_day`, `t4m_routine_item`, `t4m_custom_exercise`).
-It does **not** touch `t4m_rate_limit` (added alongside this review, already
-has no client-facing policy at all — see `src/server/rateLimit.ts`) or
-anything outside the `t4m_` prefix, matching this app's existing documented
-isolation from the rest of that Supabase project.
+`t4m_routine`, `t4m_routine_day`, `t4m_routine_item`, `t4m_custom_exercise`,
+`t4m_bodyweight`. It does **not** touch `t4m_rate_limit` (added alongside
+this review, already has no client-facing policy at all — see
+`src/server/rateLimit.ts`) or anything outside the `t4m_` prefix, matching
+this app's existing documented isolation from the rest of that Supabase
+project.
 
 **Verify afterward:** the app should still work end-to-end (it now talks to
 Postgres as `service_role`, which bypasses RLS entirely — that's the point).

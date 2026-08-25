@@ -19,6 +19,7 @@ export const TAGS = {
   program: 'program',
   sessions: 'sessions',
   logs: 'logs',
+  bodyweight: 'bodyweight',
 } as const;
 
 export interface Profile {
@@ -370,3 +371,39 @@ export async function insertPRs(
   );
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------- bodyweight
+
+export interface BodyweightEntry {
+  date: string;
+  kg: number;
+}
+
+/** Upserted on `date` — logging again the same day corrects that day's entry rather than adding a second one. */
+export async function logBodyweight(kg: number, date: string): Promise<void> {
+  const { error } = await db()
+    .from('t4m_bodyweight').upsert({ date, kg }, { onConflict: 'date' });
+  if (error) throw new Error(error.message);
+}
+
+export const recentBodyweights = unstable_cache(
+  async (limit = 90): Promise<BodyweightEntry[]> => {
+    const { data, error } = await db()
+      .from('t4m_bodyweight').select('date, kg').order('date', { ascending: true }).limit(limit);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({ date: r.date, kg: Number(r.kg) }));
+  },
+  ['t4m-recent-bodyweights'],
+  { tags: [TAGS.bodyweight] },
+);
+
+export const lastBodyweight = unstable_cache(
+  async (): Promise<BodyweightEntry | null> => {
+    const { data, error } = await db()
+      .from('t4m_bodyweight').select('date, kg').order('date', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? { date: data.date, kg: Number(data.kg) } : null;
+  },
+  ['t4m-last-bodyweight'],
+  { tags: [TAGS.bodyweight] },
+);
