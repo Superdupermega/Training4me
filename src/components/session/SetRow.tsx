@@ -11,8 +11,9 @@ import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ChangeEvent, type FocusEvent } from 'react';
 import { formatWeight } from '@/components/format';
+import { formatPlateBreakdown, plateBreakdown, STANDARD_BAR_KG, availablePlatesKg } from '@/core/plates';
 import { PAIN_AREAS, type PainArea, type PrescribedSet } from '@/core/types';
 
 export interface LoggedValue {
@@ -32,6 +33,9 @@ interface Props {
   expanded: boolean;
   onExpand: () => void;
   onComplete: (value: LoggedValue) => void;
+  /** Show plate math under the weight stepper — only meaningful for a barbell-loaded exercise. */
+  barbell?: boolean;
+  microPlates?: boolean;
 }
 
 const PAIN_LABEL: Record<PainArea, string> = {
@@ -39,7 +43,9 @@ const PAIN_LABEL: Record<PainArea, string> = {
   elbow: 'Elbow', hip: 'Hip', wrist: 'Wrist',
 };
 
-export function SetRow({ set, logged, increment, expanded, onExpand, onComplete }: Props) {
+export function SetRow({
+  set, logged, increment, expanded, onExpand, onComplete, barbell = false, microPlates = false,
+}: Props) {
   const [reps, setReps] = useState(logged?.reps ?? set.reps ?? 0);
   const [weight, setWeight] = useState(logged?.weightKg ?? set.weightKg ?? 0);
   const [rpe, setRpe] = useState<number | undefined>(logged?.rpe ?? undefined);
@@ -75,6 +81,10 @@ export function SetRow({ set, logged, increment, expanded, onExpand, onComplete 
       durationSec: set.durationSec,
       painFlag: pain || null,
     });
+
+  const plates = barbell && weight > STANDARD_BAR_KG
+    ? plateBreakdown(weight, STANDARD_BAR_KG, availablePlatesKg(microPlates))
+    : null;
 
   return (
     <Box
@@ -126,9 +136,19 @@ export function SetRow({ set, logged, increment, expanded, onExpand, onComplete 
       <Collapse in={expanded} unmountOnExit>
         <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
           {!set.distanceM && !set.durationSec && (
-            <Stack direction="row" spacing={2}>
-              <Stepper label="Reps" value={reps} step={1} onChange={setReps} />
-              <Stepper label="Weight (kg)" value={weight} step={increment} onChange={setWeight} />
+            <Stack spacing={0.5}>
+              <Stack direction="row" spacing={2}>
+                <Stepper label="Reps" value={reps} step={1} onChange={setReps} />
+                <Stepper label="Weight (kg)" value={weight} step={increment} onChange={setWeight} />
+              </Stack>
+              {plates && (
+                <Typography variant="caption" color="text.secondary" className="tnum">
+                  {plates.perSide.length === 0
+                    ? 'Empty bar'
+                    : `${formatPlateBreakdown(plates)} per side`}
+                  {!plates.exact && ` (closest at ${formatWeight(plates.totalKg)})`}
+                </Typography>
+              )}
             </Stack>
           )}
           <Box>
@@ -161,6 +181,22 @@ export function SetRow({ set, logged, increment, expanded, onExpand, onComplete 
 function Stepper({
   label, value, step, onChange,
 }: { label: string; value: number; step: number; onChange: (v: number) => void }) {
+  // A tap-to-edit numeric field, not just +/- buttons — the prescription
+  // usually pre-fills the right number, but any real correction (a lighter
+  // dumbbell, a different unit, a bodyweight movement you loaded) used to
+  // mean tapping "+" as many as 40+ times from zero. Local `text` state
+  // (rather than binding the input straight to the numeric `value`) so the
+  // field can sit empty mid-edit instead of snapping back to "0" the
+  // instant it's cleared — see docs/07-PRODUCTION-REVIEW.md #18.
+  const [text, setText] = useState(String(value));
+  useEffect(() => setText(String(value)), [value]);
+
+  const commit = (raw: string) => {
+    const next = Number(raw);
+    if (raw.trim() !== '' && Number.isFinite(next)) onChange(Math.max(0, next));
+    else setText(String(value)); // invalid or empty on blur — snap back to the last real value
+  };
+
   return (
     <Box sx={{ flex: 1 }}>
       <Typography variant="overline" color="text.secondary">{label}</Typography>
@@ -169,9 +205,28 @@ function Stepper({
           variant="outlined" sx={{ minWidth: 48, px: 0 }} aria-label={`Decrease ${label}`}
           onClick={() => onChange(Math.max(0, Math.round((value - step) * 100) / 100))}
         >−</Button>
-        <Typography className="tnum" sx={{ flex: 1, textAlign: 'center', fontSize: '1.4rem', fontWeight: 700 }}>
-          {value}
-        </Typography>
+        <Box
+          component="input"
+          type="text"
+          inputMode="decimal"
+          aria-label={label}
+          value={text}
+          onFocus={(e: FocusEvent<HTMLInputElement>) => e.target.select()}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const raw = e.target.value;
+            setText(raw);
+            const next = Number(raw);
+            if (raw.trim() !== '' && Number.isFinite(next)) onChange(Math.max(0, next));
+          }}
+          onBlur={(e: FocusEvent<HTMLInputElement>) => commit(e.target.value)}
+          className="tnum"
+          sx={{
+            flex: 1, minWidth: 0, textAlign: 'center', fontSize: '1.4rem', fontWeight: 700,
+            fontFamily: 'inherit', color: 'inherit', border: 'none', outline: 'none',
+            background: 'transparent', p: 0,
+            '&::-webkit-outer-spin-button, &::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 },
+          }}
+        />
         <Button
           variant="outlined" sx={{ minWidth: 48, px: 0 }} aria-label={`Increase ${label}`}
           onClick={() => onChange(Math.round((value + step) * 100) / 100)}

@@ -1,4 +1,5 @@
 import 'server-only';
+import { today } from '@/core/dates';
 import { getExercise } from '@/core/library/exercises';
 import { nextTrainingMax } from '@/core/progression/trainingMax';
 import * as repo from './repo';
@@ -13,11 +14,12 @@ export async function rollOverTrainingMaxes(): Promise<
   const program = await repo.getActiveProgram();
   if (!program) return [];
 
-  const [sessions, logs, currentMaxes] = await Promise.all([
+  const [sessions, logs, profile] = await Promise.all([
     repo.listSessions(program.id),
     repo.getLogsForProgram(program.id),
-    repo.getTrainingMaxes(),
+    repo.getProfile(),
   ]);
+  const currentMaxes = await repo.getTrainingMaxes(profile.timezone);
 
   const peakWeek = program.weeks === 4 ? 3 : 5;
   const peakSessionIds = new Set(
@@ -58,6 +60,6 @@ export async function rollOverTrainingMaxes(): Promise<
     });
   }
 
-  await repo.setTrainingMaxes(nextValues, 'progressed');
+  await repo.setTrainingMaxes(nextValues, 'progressed', today(profile.timezone));
   return changes;
 }

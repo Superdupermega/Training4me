@@ -6,6 +6,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useEffect, useRef, useState } from 'react';
+import { playRestAlert } from './restAlert';
 
 interface Props {
   endsAt: number;
@@ -29,13 +30,25 @@ export function RestTimer({ endsAt, totalSec, onAdjust, onDismiss }: Props) {
 
   const remaining = Math.max(0, Math.ceil((endsAt - now) / 1000));
 
+  // Scheduled against the absolute endsAt with its own setTimeout, not
+  // discovered by polling `remaining` in the 250ms display-refresh interval
+  // above — that interval is throttled hard in a backgrounded tab (switching
+  // to check something else mid-rest), which could delay `remaining`
+  // reaching 0 well past the real end time, or never fire it while hidden at
+  // all. A single absolute-time timeout still fires as scheduled. Re-runs
+  // (and re-arms) whenever `endsAt` moves, which covers both a fresh rest
+  // period and a +/-15s adjustment to this one.
   useEffect(() => {
-    if (remaining === 0 && !buzzed.current) {
+    buzzed.current = false;
+    const delay = Math.max(0, endsAt - Date.now());
+    const id = window.setTimeout(() => {
+      if (buzzed.current) return;
       buzzed.current = true;
       navigator.vibrate?.([120, 60, 120]);
-    }
-    if (remaining > 0) buzzed.current = false;
-  }, [remaining]);
+      playRestAlert();
+    }, delay);
+    return () => window.clearTimeout(id);
+  }, [endsAt]);
 
   const progress = totalSec > 0 ? Math.min(100, ((totalSec - remaining) / totalSec) * 100) : 100;
   const label = `${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`;

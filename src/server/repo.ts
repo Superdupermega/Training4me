@@ -1,5 +1,6 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
+import { DEFAULT_TIMEZONE, daysFromToday, today } from '@/core/dates';
 import { db, PROFILE_ID } from './db';
 import type {
   Equipment, Experience, GeneratorInput, PainArea, PlannedSession, Program, SessionBlock,
@@ -18,6 +19,7 @@ export const TAGS = {
   program: 'program',
   sessions: 'sessions',
   logs: 'logs',
+  bodyweight: 'bodyweight',
 } as const;
 
 export interface Profile {
@@ -34,6 +36,8 @@ export interface Profile {
   preferredWeekdays: number[];
   mesocycleWeeks: 4 | 6;
   onboardedAt: string | null;
+  /** IANA name, e.g. 'Europe/Stockholm'. What "today" means everywhere the server decides it. */
+  timezone: string;
 }
 
 export interface SessionRow {
@@ -104,6 +108,7 @@ export const getProfile = unstable_cache(
       microPlates: data.micro_plates, bodyweightKg: Number(data.bodyweight_kg),
       paceFactor: Number(data.pace_factor), preferredWeekdays: data.preferred_weekdays ?? [],
       mesocycleWeeks: data.mesocycle_weeks, onboardedAt: data.onboarded_at,
+      timezone: data.timezone || DEFAULT_TIMEZONE,
     };
   },
   ['t4m-profile'],
@@ -119,10 +124,10 @@ export async function saveProfile(patch: Record<string, unknown>): Promise<void>
 }
 
 export const getTrainingMaxes = unstable_cache(
-  async (): Promise<Record<string, number>> => {
+  async (timezone: string = DEFAULT_TIMEZONE): Promise<Record<string, number>> => {
     const { data, error } = await db()
       .from('t4m_training_max').select('exercise_id, value_kg, effective_from')
-      .lte('effective_from', new Date().toISOString().slice(0, 10))
+      .lte('effective_from', today(timezone))
       .order('effective_from', { ascending: false });
     if (error) throw new Error(error.message);
     const out: Record<string, number> = {};
@@ -139,7 +144,7 @@ export const getTrainingMaxes = unstable_cache(
 export async function setTrainingMaxes(
   values: Record<string, number>,
   source: string,
-  effectiveFrom = new Date().toISOString().slice(0, 10),
+  effectiveFrom: string = today(),
 ): Promise<void> {
   const rows = Object.entries(values).map(([exercise_id, value_kg]) => ({
     exercise_id, value_kg, source, effective_from: effectiveFrom,
@@ -238,6 +243,13 @@ export interface LoggedSetRow {
   reps?: number | null; weightKg?: number | null; rpe?: number | null;
   distanceM?: number | null; durationSec?: number | null;
   skipped?: boolean; painFlag?: PainArea | null; clientLoggedAt?: string;
+  /**
+   * Client-only: the offline outbox's version stamp for this exact row
+   * instance (src/components/session/outbox.ts). Never read here — `logSets`
+   * below maps only the named fields into the database write, so this is
+   * dropped on arrival rather than sent to Postgres.
+   */
+  seq?: number;
 }
 
 /** Idempotent on (session, block, slot, set) so an offline replay cannot duplicate. */
@@ -292,11 +304,19 @@ export const historyForExercise = unstable_cache(
   { tags: [TAGS.logs] },
 );
 
+/**
+ * `before`, when given, only returns sessions scheduled strictly earlier
+ * than that date — the cursor /history pages through older history with,
+ * rather than the hard 40-session cutoff that used to make training from
+ * roughly three months back permanently unreachable through the UI (the
+ * rows stayed in Postgres; nothing in the app would ever show them again).
+ * See docs/07-PRODUCTION-REVIEW.md #13.
+ */
 export const recentSessions = unstable_cache(
-  async (limit = 40): Promise<SessionRow[]> => {
-    const { data, error } = await db()
-      .from('t4m_session').select('*').in('status', ['completed', 'skipped'])
-      .order('scheduled_date', { ascending: false }).limit(limit);
+  async (limit = 40, before?: string): Promise<SessionRow[]> => {
+    let query = db().from('t4m_session').select('*').in('status', ['completed', 'skipped']);
+    if (before) query = query.lt('scheduled_date', before);
+    const { data, error } = await query.order('scheduled_date', { ascending: false }).limit(limit);
     if (error) throw new Error(error.message);
     return (data ?? []).map(toSession);
   },
@@ -304,19 +324,17 @@ export const recentSessions = unstable_cache(
   { tags: [TAGS.sessions] },
 );
 
-export async function addPainFlag(area: PainArea, days = 14): Promise<void> {
-  const until = new Date();
-  until.setDate(until.getDate() + days);
+export async function addPainFlag(area: PainArea, timezone: string = DEFAULT_TIMEZONE, days = 14): Promise<void> {
   const { error } = await db()
-    .from('t4m_pain_flag').insert({ area, active_until: until.toISOString().slice(0, 10) });
+    .from('t4m_pain_flag').insert({ area, active_until: daysFromToday(days, timezone) });
   if (error) throw new Error(error.message);
 }
 
 export const activePainFlags = unstable_cache(
-  async (): Promise<PainArea[]> => {
+  async (timezone: string = DEFAULT_TIMEZONE): Promise<PainArea[]> => {
     const { data, error } = await db()
       .from('t4m_pain_flag').select('area')
-      .gte('active_until', new Date().toISOString().slice(0, 10));
+      .gte('active_until', today(timezone));
     if (error) throw new Error(error.message);
     return [...new Set((data ?? []).map((r) => r.area as PainArea))];
   },
@@ -338,11 +356,28 @@ export interface Pr {
 export const listPRs = unstable_cache(
   async (): Promise<Pr[]> => {
     const { data, error } = await db()
-      .from('t4m_pr').select('*').order('achieved_at', { ascending: false }).limit(50);
+      // Used both for display (which slices to a handful) and, since #8, as
+      // the source of truth `detectAndRecordPRs` compares every new set
+      // against — it needs to see every exercise's true best, not just the
+      // 50 most recently broken records. 1000 comfortably covers this app's
+      // ~300-exercise library × 4 PR kinds even years into a single log.
+      .from('t4m_pr').select('*').order('achieved_at', { ascending: false }).limit(1000);
     if (error) throw new Error(error.message);
     return (data ?? []) as Pr[];
   },
   ['t4m-list-prs'],
+  { tags: [TAGS.logs] },
+);
+
+/** PRs set in one specific session — the session summary badges these against the set that won them. */
+export const listPRsForSession = unstable_cache(
+  async (sessionId: string): Promise<Pr[]> => {
+    const { data, error } = await db()
+      .from('t4m_pr').select('*').eq('session_id', sessionId);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Pr[];
+  },
+  ['t4m-list-prs-for-session'],
   { tags: [TAGS.logs] },
 );
 
@@ -358,3 +393,39 @@ export async function insertPRs(
   );
   if (error) throw new Error(error.message);
 }
+
+// ---------------------------------------------------------------- bodyweight
+
+export interface BodyweightEntry {
+  date: string;
+  kg: number;
+}
+
+/** Upserted on `date` — logging again the same day corrects that day's entry rather than adding a second one. */
+export async function logBodyweight(kg: number, date: string): Promise<void> {
+  const { error } = await db()
+    .from('t4m_bodyweight').upsert({ date, kg }, { onConflict: 'date' });
+  if (error) throw new Error(error.message);
+}
+
+export const recentBodyweights = unstable_cache(
+  async (limit = 90): Promise<BodyweightEntry[]> => {
+    const { data, error } = await db()
+      .from('t4m_bodyweight').select('date, kg').order('date', { ascending: true }).limit(limit);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => ({ date: r.date, kg: Number(r.kg) }));
+  },
+  ['t4m-recent-bodyweights'],
+  { tags: [TAGS.bodyweight] },
+);
+
+export const lastBodyweight = unstable_cache(
+  async (): Promise<BodyweightEntry | null> => {
+    const { data, error } = await db()
+      .from('t4m_bodyweight').select('date, kg').order('date', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? { date: data.date, kg: Number(data.kg) } : null;
+  },
+  ['t4m-last-bodyweight'],
+  { tags: [TAGS.bodyweight] },
+);

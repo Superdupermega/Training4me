@@ -9,10 +9,9 @@ export const dynamic = 'force-dynamic';
 
 export default async function RoutineBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [routine, profile, trainingMaxes] = await Promise.all([
-    getRoutine(id), getProfile(), getTrainingMaxes(),
-  ]);
+  const [routine, profile] = await Promise.all([getRoutine(id), getProfile()]);
   if (!routine) notFound();
+  const trainingMaxes = await getTrainingMaxes(profile.timezone);
 
   return (
     <Box sx={{ minHeight: '100dvh' }}>

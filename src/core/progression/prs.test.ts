@@ -28,4 +28,25 @@ describe('detectPRs', () => {
     expect(prs.filter((p) => p.kind === 'rep_max_5')).toHaveLength(1);
     expect(prs.find((p) => p.kind === 'rep_max_5')?.value).toBe(120);
   });
+
+  it('compares against the highest existing record, not the last one in the list', () => {
+    // `existing` is an append-only history, typically most-recent first —
+    // a set beating an old, lower entry that happens to sort late must
+    // still not count as a PR if a higher record already stands.
+    const existing = [
+      { exerciseId: 'back-squat', kind: 'e1rm', value: 220 }, // most recent, highest
+      { exerciseId: 'back-squat', kind: 'e1rm', value: 150 }, // oldest, lowest
+    ];
+    expect(detectPRs([set(1, 200)], existing)).toHaveLength(0);
+    expect(detectPRs([set(1, 230)], existing).find((p) => p.kind === 'e1rm')?.value).toBeGreaterThan(220);
+  });
+
+  it('attributes a PR to the session of the set that actually won it', () => {
+    const sets = [
+      { ...set(5, 100), sessionId: 'session-a' },
+      { ...set(5, 150), sessionId: 'session-b' },
+    ];
+    const pr = detectPRs(sets, []).find((p) => p.kind === 'rep_max_5');
+    expect(pr?.sessionId).toBe('session-b');
+  });
 });

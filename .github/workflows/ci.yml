@@ -1,0 +1,53 @@
+name: CI
+
+# 242 tests, a custom ESLint rule that keeps src/core pure, and a typecheck
+# existed with nothing gating them — production deployed straight from a
+# branch push regardless of whether any of it passed
+# (docs/07-PRODUCTION-REVIEW.md #25). This is that gate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+        env:
+          # The app builds with zero required env vars (README, "Deploying
+          # to Vercel") — no secrets needed for CI to prove the build works.
+          NODE_ENV: production
+
+      - name: Verify the PIN-gate action isolation
+        run: pnpm verify:actions

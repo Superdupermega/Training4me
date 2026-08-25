@@ -28,9 +28,14 @@ Optionally, set `APP_PIN` in `.env.local` to test the lock screen locally; it
 does nothing by default outside production (see below).
 
 The training tables live in the **cyberpunk-vibe01** Supabase project, prefixed
-`t4m_` and separate from that project's other tables. RLS is enabled with
-policies scoped to exactly those tables — nothing else in that project is
-reachable through this app, and this app touches nothing else in it either.
+`t4m_` and separate from that project's other tables — nothing else in that
+project is reachable through this app, and this app touches nothing else in
+it either. RLS is enabled on every one of them, but "scoped" undersells what
+that means today: with the publishable key, each policy is currently
+`USING (true)` for both `anon` and `authenticated` — full read/write on
+every `t4m_` table, not narrowed to anything. It's isolation from the rest
+of that Supabase project, not restriction within it. See the trade-off
+below, and *Tightening it* for closing it.
 
 **The trade-off, stated plainly:** because the publishable key is public by
 design, the `t4m_` tables are reachable by anyone who has it — which is the
@@ -73,9 +78,11 @@ npx vercel --prod                        # rebuild — env changes need a new bu
 
 **Make it a passphrase, not four digits.** This is genuinely the only thing
 between the internet and your log. The cookie stores a SHA-256 hash rather
-than the PIN itself, comparison is constant-time, and wrong guesses are slowed
-down — none of which saves a four-digit PIN from being guessed in seconds.
-Something like `bench-105-in-may` is just as easy to type on a phone.
+than the PIN itself, comparison is constant-time, and wrong guesses from one
+IP are rate-limited server-side (8 per 15 minutes, enforced in Postgres —
+not just a client-visible delay) — none of which saves a four-digit PIN from
+being guessed within that budget. Something like `bench-105-in-may` is just
+as easy to type on a phone.
 
 > **Env var changes need a redeploy, not just a save.** The lock runs in Edge
 > middleware, and Vercel inlines environment variables into that bundle at
@@ -94,16 +101,17 @@ key or not. This value must never go in the repository, which is public.
 **Make `APP_PIN` a passphrase, not four digits.** With Vercel Authentication
 turned off, this is the only thing between the internet and your log. The cookie
 stores a SHA-256 hash rather than the value itself, comparison is constant-time,
-and wrong guesses are slowed down — but none of that saves a four-digit PIN from
-being guessed. Something like `bench-105-in-may` is easy to type on a phone and
-not worth anyone's time to attack.
+and wrong guesses from one IP are rate-limited server-side — but none of that
+saves a four-digit PIN from being guessed inside that budget. Something like
+`bench-105-in-may` is easy to type on a phone and not worth anyone's time to
+attack.
 
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Run locally |
-| `pnpm test` | 242 unit tests, including the 150-combination generator matrix |
+| `pnpm test` | 283 unit tests, including the 150-combination generator matrix |
 | `pnpm lint` | ESLint, including the rule that keeps `src/core` pure |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm build` | Production build |
@@ -192,8 +200,10 @@ src/core/        pure training logic — library, generator, time budget, progre
 src/server/      Supabase access and server actions (server-only)
 src/components/  UI, including the session player, the nav shell, and the routine builder
 src/app/         routes: /onboarding /today /program /program/builder /exercises
-                  /history /profile /profile/settings /session/[id]
-docs/            the original build plan, the methodology spec, and the redesign plan
+                  /history /profile /profile/settings /profile/export /session/[id]
+docs/            the original build plan, the methodology spec, the redesign plan,
+                  and the production review (07) with its RLS-tightening (08) and
+                  push-notification (09) setup follow-ups
 ```
 
 `docs/01-METHODOLOGY.md` is the written spec the code implements. Where the code

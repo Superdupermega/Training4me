@@ -3,33 +3,36 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardActionArea from '@mui/material/CardActionArea';
 import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
 import { AnalysisTabs } from '@/components/profile/AnalysisTabs';
+import { today } from '@/core/dates';
 import {
   calendarActivity, consistency, e1rmSeries, volumeByMuscleGroup, weeklyVolume,
 } from '@/server/analytics';
-import { getProfile, getTrainingMaxes, listPRs } from '@/server/repo';
+import { getProfile, getTrainingMaxes, listPRs, recentBodyweights } from '@/server/repo';
 
 export const dynamic = 'force-dynamic';
 
 const DEFAULT_LIFT = 'back-squat';
 
 /**
- * The analysis home: Strength / Volume / Consistency / Records (chunk 20).
- * A Body tab (bodyweight over time) was scoped out of this pass — it needs
- * its own table and is the smallest of the five originally sketched tabs;
- * see docs/DECISIONS.md.
+ * The analysis home: Strength / Volume / Consistency / Body / Records.
+ * Body (bodyweight over time) was scoped out of the original chunk 20 pass
+ * for needing its own table (docs/DECISIONS.md, 2026-08-25) — that table now
+ * exists (docs/07-PRODUCTION-REVIEW.md #19).
  */
 export default async function ProfilePage() {
-  const [profile, trainingMaxes, prs, weekly, byMuscleGroup, consistencySummary, calendar, strengthSeries] =
+  const profile = await getProfile();
+  const [trainingMaxes, prs, weekly, byMuscleGroup, consistencySummary, calendar, strengthSeries, bodyweights] =
     await Promise.all([
-      getProfile(), getTrainingMaxes(), listPRs(),
-      weeklyVolume(8), volumeByMuscleGroup(4), consistency(), calendarActivity(84),
-      e1rmSeries(DEFAULT_LIFT),
+      getTrainingMaxes(profile.timezone), listPRs(),
+      weeklyVolume(8), volumeByMuscleGroup(4), consistency(profile.timezone), calendarActivity(84),
+      e1rmSeries(DEFAULT_LIFT), recentBodyweights(),
     ]);
 
   return (
@@ -57,6 +60,18 @@ export default async function ProfilePage() {
                 <ChevronRightIcon color="disabled" />
               </Stack>
             </CardActionArea>
+            <Divider />
+            <CardActionArea component={Link} href="/profile/export" sx={{ p: 2 }}>
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h3">Export your data</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Download every logged set as a CSV, or a full JSON backup
+                  </Typography>
+                </Box>
+                <ChevronRightIcon color="disabled" />
+              </Stack>
+            </CardActionArea>
           </Card>
 
           <AnalysisTabs
@@ -68,6 +83,8 @@ export default async function ProfilePage() {
             paceFactor={profile.paceFactor}
             prs={prs}
             trainingMaxes={trainingMaxes}
+            bodyweights={bodyweights}
+            today={today(profile.timezone)}
           />
         </Stack>
       </PageContainer>

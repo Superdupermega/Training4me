@@ -1,16 +1,17 @@
 'use server';
 import { revalidateTag } from 'next/cache';
-import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import type { RoutineDay } from '@/core/builder/types';
+import { today } from '@/core/dates';
 import { generateProgram } from '@/core/generator/generateProgram';
 import { PROFILE_EQUIPMENT } from '@/core/library/equipment';
 import { detectPRs } from '@/core/progression/prs';
 import { applyReadiness } from '@/core/progression/readiness';
 import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness } from '@/core/types';
 import * as analytics from './analytics';
+import { requireUnlocked } from './authGuard';
 import { exerciseContext, type ExerciseContext } from './exerciseContext';
-import { COOKIE_MAX_AGE, COOKIE_NAME, deriveToken, safeEqual } from './lock';
+import * as push from './push';
 import * as repo from './repo';
 import { TAGS } from './repo';
 import * as routines from './routines';
@@ -23,20 +24,9 @@ function fail(err: unknown): Result<never> {
   return { ok: false, error: message };
 }
 
-export async function unlock(formData: FormData): Promise<Result> {
-  const pin = process.env.APP_PIN;
-  const given = String(formData.get('pin') ?? '');
-  if (!pin || !safeEqual(await deriveToken(given), await deriveToken(pin))) {
-    // Slow down casual guessing. Not a substitute for a long PIN.
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    return { ok: false, error: 'Wrong PIN' };
-  }
-  (await cookies()).set(COOKIE_NAME, await deriveToken(pin), {
-    httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production',
-    maxAge: COOKIE_MAX_AGE, path: '/',
-  });
-  return { ok: true };
-}
+// `unlock` itself lives in `./unlockAction` — its own module, imported by
+// nothing but `/unlock` — so that page's build output never lists any of
+// the actions below as one of its callable workers. See authGuard.ts.
 
 export interface OnboardingInput {
   daysPerWeek: number;
@@ -52,6 +42,7 @@ export interface OnboardingInput {
 
 export async function completeOnboarding(input: OnboardingInput): Promise<Result<{ programId: string }>> {
   try {
+    await requireUnlocked();
     await repo.saveProfile({
       days_per_week: input.daysPerWeek,
       experience: input.experience,
@@ -74,8 +65,10 @@ export async function completeOnboarding(input: OnboardingInput): Promise<Result
 
 /** Generate from whatever the profile currently says and make it the active block. */
 export async function buildProgram(startDate?: string): Promise<string> {
-  const [profile, trainingMaxes, painFlags] = await Promise.all([
-    repo.getProfile(), repo.getTrainingMaxes(), repo.activePainFlags(),
+  await requireUnlocked();
+  const profile = await repo.getProfile();
+  const [trainingMaxes, painFlags] = await Promise.all([
+    repo.getTrainingMaxes(profile.timezone), repo.activePainFlags(profile.timezone),
   ]);
   const equipment = profile.equipment.length
     ? profile.equipment
@@ -94,7 +87,7 @@ export async function buildProgram(startDate?: string): Promise<string> {
     microPlates: profile.microPlates,
     bodyweightKg: profile.bodyweightKg,
     paceFactor: profile.paceFactor,
-    startDate: startDate ?? new Date().toISOString().slice(0, 10),
+    startDate: startDate ?? today(profile.timezone),
     seed: Math.floor(Math.random() * 1_000_000),
   };
   const program = generateProgram(generatorInput);
@@ -108,6 +101,7 @@ export async function buildProgram(startDate?: string): Promise<string> {
 
 export async function regenerateProgram(): Promise<Result> {
   try {
+    await requireUnlocked();
     await buildProgram();
     return { ok: true };
   } catch (err) {
@@ -117,6 +111,7 @@ export async function regenerateProgram(): Promise<Result> {
 
 export async function beginSession(sessionId: string, readiness: Readiness | null): Promise<Result> {
   try {
+    await requireUnlocked();
     const [session, profile] = await Promise.all([repo.getSession(sessionId), repo.getProfile()]);
     if (!session) return { ok: false, error: 'Session not found' };
 
@@ -145,36 +140,56 @@ export async function beginSession(sessionId: string, readiness: Readiness | nul
 
 export async function logSets(sets: repo.LoggedSetRow[]): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.logSets(sets);
     revalidateTag(TAGS.logs);
     const pain = sets.find((s) => s.painFlag);
     if (pain?.painFlag) {
-      await repo.addPainFlag(pain.painFlag as PainArea);
+      const profile = await repo.getProfile();
+      await repo.addPainFlag(pain.painFlag as PainArea, profile.timezone);
       revalidateTag(TAGS.profile);
     }
+    await detectAndRecordPRs(sets);
     return { ok: true };
   } catch (err) {
     return fail(err);
   }
 }
 
+/**
+ * Runs PR detection against exactly the sets in this one batch, whether they
+ * were logged live or arrived later out of the offline outbox — incremental
+ * and order-independent, rather than the one-shot pass `finishSession` used
+ * to run against whatever was already in the database at that instant. A set
+ * still queued client-side when a session was finished offline used to be
+ * silently skipped for PRs forever: this function runs once, whenever that
+ * set actually lands, however late. See docs/07-PRODUCTION-REVIEW.md #8.
+ */
+async function detectAndRecordPRs(sets: repo.LoggedSetRow[]): Promise<void> {
+  if (sets.length === 0) return;
+  const existing = await repo.listPRs();
+  const prs = detectPRs(
+    sets.map((s) => ({
+      exerciseId: s.exerciseId, reps: s.reps ?? 0, weightKg: s.weightKg ?? 0,
+      skipped: s.skipped ?? false, sessionId: s.sessionId,
+    })),
+    existing.map((p) => ({ exerciseId: p.exercise_id, kind: p.kind, value: Number(p.value) })),
+  );
+  if (prs.length === 0) return;
+  await repo.insertPRs(prs.map((p) => ({ ...p, sessionId: p.sessionId ?? sets[0]!.sessionId })));
+  revalidateTag(TAGS.logs);
+}
+
 export async function finishSession(sessionId: string, actualSec: number, notes?: string): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.updateSession(sessionId, {
       status: 'completed', completed_at: new Date().toISOString(),
       actual_sec: actualSec, notes: notes ?? null,
     });
-
-    const logged = await repo.getLoggedSets(sessionId);
-    const existing = await repo.listPRs();
-    const prs = detectPRs(
-      logged.map((l) => ({
-        exerciseId: l.exercise_id, reps: l.reps ?? 0,
-        weightKg: l.weight_kg ? Number(l.weight_kg) : 0, skipped: l.skipped,
-      })),
-      existing.map((p) => ({ exerciseId: p.exercise_id, kind: p.kind, value: Number(p.value) })),
-    );
-    await repo.insertPRs(prs.map((p) => ({ ...p, sessionId })));
+    // PR detection no longer happens here — see detectAndRecordPRs above.
+    // Every set this session ever logs, including ones still queued offline
+    // right now, runs through it via logSets whenever it actually arrives.
     await recalibratePace();
 
     revalidateTag(TAGS.sessions);
@@ -187,6 +202,7 @@ export async function finishSession(sessionId: string, actualSec: number, notes?
 
 export async function skipSession(sessionId: string): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.updateSession(sessionId, { status: 'skipped' });
     revalidateTag(TAGS.sessions);
     return { ok: true };
@@ -207,7 +223,33 @@ async function recalibratePace(): Promise<void> {
 
 export async function updateSettings(patch: Record<string, unknown>): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.saveProfile(patch);
+    revalidateTag(TAGS.profile);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Bodyweight was previously a single scalar set once at onboarding and never
+ * revisited — for a strength app it is half of every meaningful ratio.
+ * Logs today's entry (upserted, so logging again the same day corrects it
+ * rather than duplicating), and keeps `t4m_profile.bodyweight_kg` — read
+ * directly by load calculations elsewhere — in sync with the latest value.
+ * See docs/07-PRODUCTION-REVIEW.md #19.
+ */
+export async function logBodyweight(kg: number): Promise<Result> {
+  try {
+    await requireUnlocked();
+    if (!Number.isFinite(kg) || kg <= 0) return { ok: false, error: 'Enter a real bodyweight' };
+    const profile = await repo.getProfile();
+    await Promise.all([
+      repo.logBodyweight(kg, today(profile.timezone)),
+      repo.saveProfile({ bodyweight_kg: kg }),
+    ]);
+    revalidateTag(TAGS.bodyweight);
     revalidateTag(TAGS.profile);
     return { ok: true };
   } catch (err) {
@@ -217,6 +259,7 @@ export async function updateSettings(patch: Record<string, unknown>): Promise<Re
 
 export async function startNextBlock(): Promise<Result> {
   try {
+    await requireUnlocked();
     const { rollOverTrainingMaxes } = await import('./nextBlock');
     await rollOverTrainingMaxes();
     revalidateTag(TAGS.profile);
@@ -247,6 +290,7 @@ export async function deleteActiveProgram(): Promise<Result> {
 
 export async function createRoutine(input: routines.CreateRoutineInput): Promise<Result<{ routineId: string }>> {
   try {
+    await requireUnlocked();
     const routineId = await routines.createRoutine(input);
     revalidateTag(ROUTINE_TAG);
     return { ok: true, data: { routineId } };
@@ -257,6 +301,7 @@ export async function createRoutine(input: routines.CreateRoutineInput): Promise
 
 export async function renameRoutine(routineId: string, name: string): Promise<Result> {
   try {
+    await requireUnlocked();
     await routines.renameRoutine(routineId, name);
     revalidateTag(ROUTINE_TAG);
     return { ok: true };
@@ -267,6 +312,7 @@ export async function renameRoutine(routineId: string, name: string): Promise<Re
 
 export async function archiveRoutine(routineId: string): Promise<Result> {
   try {
+    await requireUnlocked();
     await routines.archiveRoutine(routineId);
     revalidateTag(ROUTINE_TAG);
     return { ok: true };
@@ -277,6 +323,7 @@ export async function archiveRoutine(routineId: string): Promise<Result> {
 
 export async function saveRoutineDays(routineId: string, days: RoutineDay[]): Promise<Result> {
   try {
+    await requireUnlocked();
     await routines.saveRoutineDays(routineId, days);
     revalidateTag(ROUTINE_TAG);
     return { ok: true };
@@ -288,13 +335,13 @@ export async function saveRoutineDays(routineId: string, days: RoutineDay[]): Pr
 /** Materialises the routine and makes it the active program (replaces any other active one). */
 export async function scheduleRoutine(routineId: string): Promise<Result<{ programId: string }>> {
   try {
-    const [routine, profile, trainingMaxes] = await Promise.all([
-      routines.getRoutine(routineId), repo.getProfile(), repo.getTrainingMaxes(),
-    ]);
+    await requireUnlocked();
+    const [routine, profile] = await Promise.all([routines.getRoutine(routineId), repo.getProfile()]);
     if (!routine) return { ok: false, error: 'Routine not found' };
+    const trainingMaxes = await repo.getTrainingMaxes(profile.timezone);
 
     const programId = await routines.scheduleRoutine(routine, {
-      startDate: new Date().toISOString().slice(0, 10),
+      startDate: today(profile.timezone),
       trainingMaxes,
       increment: profile.microPlates ? 1.25 : 2.5,
       paceFactor: profile.paceFactor,
@@ -310,6 +357,7 @@ export async function scheduleRoutine(routineId: string): Promise<Result<{ progr
 /** Seeds a new routine from the currently active generated program's week one — the fast path most people will actually use. */
 export async function duplicateActiveProgramAsRoutine(name: string): Promise<Result<{ routineId: string }>> {
   try {
+    await requireUnlocked();
     const program = await repo.getActiveProgram();
     if (!program) return { ok: false, error: 'No active program to duplicate' };
     const sessions = await repo.listSessions(program.id);
@@ -361,6 +409,7 @@ export async function getExerciseContexts(
   opts?: { percentTm?: number; increment?: number },
 ): Promise<Result<Record<string, ExerciseContext>>> {
   try {
+    await requireUnlocked();
     const data = await exerciseContext(exerciseIds, opts);
     return { ok: true, data };
   } catch (err) {
@@ -372,8 +421,31 @@ export async function getExerciseContexts(
 
 export async function getE1rmSeries(exerciseId: string): Promise<Result<Awaited<ReturnType<typeof analytics.e1rmSeries>>>> {
   try {
+    await requireUnlocked();
     const data = await analytics.e1rmSeries(exerciseId);
     return { ok: true, data };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------- push notifications (#24)
+
+export async function subscribeToPush(subscription: push.PushSubscriptionInput): Promise<Result> {
+  try {
+    await requireUnlocked();
+    await push.savePushSubscription(subscription);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function unsubscribeFromPush(endpoint: string): Promise<Result> {
+  try {
+    await requireUnlocked();
+    await push.deletePushSubscription(endpoint);
+    return { ok: true };
   } catch (err) {
     return fail(err);
   }

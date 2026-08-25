@@ -57,3 +57,37 @@ self.addEventListener('fetch', (event) => {
     }),
   );
 });
+
+// Web Push — docs/07-PRODUCTION-REVIEW.md #24. The push event carries the
+// JSON payload src/server/push.ts sends ({title, body, url}); the resulting
+// notification's click just focuses (or opens) that url, same behaviour a
+// user tapping the app icon would get.
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Training4me', body: '', url: '/today' };
+  try {
+    if (event.data) payload = { ...payload, ...event.data.json() };
+  } catch {
+    // A malformed or missing payload still shows a generic notification
+    // rather than silently doing nothing.
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/icon.svg',
+      badge: '/icon.svg',
+      data: { url: payload.url },
+    }),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data && event.notification.data.url ? event.notification.data.url : '/today';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((c) => new URL(c.url).pathname === url);
+      if (existing) return existing.focus();
+      return self.clients.openWindow(url);
+    }),
+  );
+});

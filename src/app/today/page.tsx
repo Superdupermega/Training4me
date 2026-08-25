@@ -8,6 +8,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
+import { today } from '@/core/dates';
 import { SessionRow } from '@/components/today/SessionRow';
 import { TodayCard } from '@/components/today/TodayCard';
 import { WeekStrip } from '@/components/today/WeekStrip';
@@ -40,7 +41,7 @@ export default async function TodayPage() {
   }
 
   const sessions = await listSessions(program.id);
-  const today = new Date().toISOString().slice(0, 10);
+  const todayDate = today(profile.timezone);
 
   // The oldest session that isn't done, in schedule order — never just
   // "today or later". A missed day must stay visible and actionable, not
@@ -48,8 +49,8 @@ export default async function TodayPage() {
   // strand the whole block (nothing else ever completes the last session).
   const featured = sessions.find((s) => s.status === 'planned' || s.status === 'in_progress');
   const featuredStatus: 'today' | 'next' | 'overdue' | null = !featured ? null
-    : featured.scheduledDate < today ? 'overdue'
-      : featured.scheduledDate === today ? 'today'
+    : featured.scheduledDate < todayDate ? 'overdue'
+      : featured.scheduledDate === todayDate ? 'today'
         : 'next';
   const currentWeek = featured?.weekNumber
     ?? (sessions.length ? Math.max(...sessions.map((s) => s.weekNumber)) : 1);

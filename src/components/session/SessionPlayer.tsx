@@ -38,9 +38,10 @@ interface Props {
   increment: number;
   initialLogged: Record<string, LoggedValue>;
   contexts?: Record<string, ExerciseContext>;
+  microPlates?: boolean;
 }
 
-export function SessionPlayer({ session, increment, initialLogged, contexts }: Props) {
+export function SessionPlayer({ session, increment, initialLogged, contexts, microPlates = false }: Props) {
   const router = useRouter();
   const [logged, setLogged] = useState<Record<string, LoggedValue>>(initialLogged);
   const [blocks, setBlocks] = useState<SessionBlock[]>(session.blocks);
@@ -53,6 +54,8 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
   const [queued, setQueued] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
   const [askReadiness, setAskReadiness] = useState(session.status === 'planned');
   const [startedAt] = useState(() => (session.startedAt ? new Date(session.startedAt).getTime() : Date.now()));
   const [now, setNow] = useState(startedAt);
@@ -64,10 +67,24 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
   }, []);
 
   // Keep the screen on while the player is open; harmless where unsupported.
+  // A screen wake lock is released by the browser automatically whenever the
+  // document goes hidden — locking the phone, switching to a music app — and
+  // does not come back on its own. Without re-requesting it on
+  // visibilitychange this only ever covered the very first time the screen
+  // would have slept, then behaved as if it had never been requested at all
+  // for the rest of the workout. See docs/07-PRODUCTION-REVIEW.md #11.
   useEffect(() => {
     let sentinel: WakeLockSentinel | null = null;
-    navigator.wakeLock?.request('screen').then((s) => { sentinel = s; }).catch(() => {});
-    return () => { sentinel?.release().catch(() => {}); };
+    const acquire = () => {
+      if (document.visibilityState !== 'visible') return;
+      navigator.wakeLock?.request('screen').then((s) => { sentinel = s; }).catch(() => {});
+    };
+    acquire();
+    document.addEventListener('visibilitychange', acquire);
+    return () => {
+      document.removeEventListener('visibilitychange', acquire);
+      sentinel?.release().catch(() => {});
+    };
   }, []);
 
   const flush = useCallback(async () => {
@@ -126,16 +143,25 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
 
   const elapsed = Math.max(0, Math.round((now - startedAt) / 1000));
 
+  // Shared by both the readiness dialog's Skip and Start actions — either
+  // way this is the same server call with the same failure mode. Previously
+  // Skip fired beginSession without awaiting or checking the result at all:
+  // on failure the session never got `started_at`, so the elapsed timer
+  // silently restarted from zero on every reload, with an unhandled
+  // rejection the only trace. See docs/07-PRODUCTION-REVIEW.md #9.
+  const startSession = useCallback(async (readiness: Readiness | null) => {
+    setAskReadiness(false);
+    const result = await beginSession(session.id, readiness);
+    if (result.ok) router.refresh();
+    else setToast(`Could not start the session: ${result.error}`);
+  }, [router, session.id]);
+
   return (
     <Box sx={{ minHeight: '100dvh', pb: rest ? 16 : 12 }}>
       <ReadinessDialog
         open={askReadiness}
-        onSkip={() => { setAskReadiness(false); beginSession(session.id, null); }}
-        onSubmit={async (readiness: Readiness) => {
-          setAskReadiness(false);
-          const result = await beginSession(session.id, readiness);
-          if (result.ok) router.refresh();
-        }}
+        onSkip={() => startSession(null)}
+        onSubmit={(readiness: Readiness) => startSession(readiness)}
       />
 
       <TopBar
@@ -157,9 +183,13 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
       </Stack>
 
       {blocks.map((block) => {
+        // Same rule as `totals` above: ramp sets are warm-ups, not working
+        // sets — a block with one could read "12/12 sets" in the header
+        // while its own accordion still showed as not done, disagreeing
+        // with itself. See docs/07-PRODUCTION-REVIEW.md #14.
         const blockSets = block.exercises.flatMap((e) =>
-          e.sets.map((s) => key(block.letter, e.slot, s.setNumber)));
-        const blockDone = blockSets.every((k) => logged[k]);
+          e.sets.filter((s) => s.kind !== 'ramp').map((s) => key(block.letter, e.slot, s.setNumber)));
+        const blockDone = blockSets.length > 0 && blockSets.every((k) => logged[k]);
         return (
           <Accordion
             key={block.letter}
@@ -211,6 +241,8 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
                           set={set}
                           logged={logged[id]}
                           increment={increment}
+                          barbell={exercise.equipment.includes('barbell')}
+                          microPlates={microPlates}
                           expanded={expandedSet === id}
                           onExpand={() => setExpandedSet((prev) => (prev === id ? null : id))}
                           onComplete={(value) =>
@@ -252,7 +284,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
         />
       )}
 
-      <Dialog open={confirmFinish} onClose={() => setConfirmFinish(false)}>
+      <Dialog open={confirmFinish} onClose={() => (finishing ? undefined : setConfirmFinish(false))}>
         <DialogTitle>Finish this session?</DialogTitle>
         <DialogContent>
           <Typography color="text.secondary">
@@ -261,20 +293,40 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
           </Typography>
           {queued > 0 && (
             <Alert severity="info" sx={{ mt: 2 }}>
-              {queued} sets still to sync. They will send as soon as you are back online.
+              {queued} sets still to sync. They will send as soon as you are back online. PRs
+              among them are still detected whenever they do.
+            </Alert>
+          )}
+          {finishError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              Could not finish the session: {finishError}. Nothing was lost — try again.
             </Alert>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button variant="text" onClick={() => setConfirmFinish(false)}>Keep going</Button>
+          <Button variant="text" onClick={() => setConfirmFinish(false)} disabled={finishing}>
+            Keep going
+          </Button>
           <Button
+            disabled={finishing}
             onClick={async () => {
+              setFinishing(true);
+              setFinishError(null);
               await flush();
-              await finishSession(session.id, elapsed);
-              router.push('/today');
+              const result = await finishSession(session.id, elapsed);
+              if (result.ok) {
+                router.push('/today');
+                return;
+              }
+              // finishSession returned a real failure — previously this was
+              // discarded outright and the app navigated away regardless,
+              // telling the user the session was complete when it was not.
+              // See docs/07-PRODUCTION-REVIEW.md #9.
+              setFinishing(false);
+              setFinishError(result.error);
             }}
           >
-            Finish
+            {finishing ? 'Finishing…' : 'Finish'}
           </Button>
         </DialogActions>
       </Dialog>

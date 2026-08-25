@@ -4,11 +4,12 @@ import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
 import { useState } from 'react';
 import type { E1rmPoint, CalendarDay, ConsistencySummary, MuscleGroupVolume, WeekBucket } from '@/server/analytics';
-import type { Pr } from '@/server/repo';
+import type { BodyweightEntry, Pr } from '@/server/repo';
 import { StrengthTab } from './StrengthTab';
 import { VolumeTab } from './VolumeTab';
 import { ConsistencyTab } from './ConsistencyTab';
 import { RecordsTab } from './RecordsTab';
+import { BodyTab } from './BodyTab';
 
 interface Props {
   strength: { exerciseId: string; series: E1rmPoint[] };
@@ -19,12 +20,15 @@ interface Props {
   paceFactor: number;
   prs: Pr[];
   trainingMaxes: Record<string, number>;
+  bodyweights: BodyweightEntry[];
+  today: string;
 }
 
-const TABS = ['Strength', 'Volume', 'Consistency', 'Records'] as const;
+const TABS = ['Strength', 'Volume', 'Consistency', 'Body', 'Records'] as const;
 
 export function AnalysisTabs({
   strength, weekly, byMuscleGroup, consistencySummary, calendar, paceFactor, prs, trainingMaxes,
+  bodyweights, today,
 }: Props) {
   const [tab, setTab] = useState(0);
 
@@ -38,8 +42,11 @@ export function AnalysisTabs({
         <StrengthTab initialExerciseId={strength.exerciseId} initialSeries={strength.series} trainingMaxes={trainingMaxes} />
       )}
       {tab === 1 && <VolumeTab weekly={weekly} byMuscleGroup={byMuscleGroup} />}
-      {tab === 2 && <ConsistencyTab summary={consistencySummary} calendar={calendar} paceFactor={paceFactor} />}
-      {tab === 3 && <RecordsTab prs={prs} trainingMaxes={trainingMaxes} />}
+      {tab === 2 && (
+        <ConsistencyTab summary={consistencySummary} calendar={calendar} paceFactor={paceFactor} today={today} />
+      )}
+      {tab === 3 && <BodyTab entries={bodyweights} today={today} />}
+      {tab === 4 && <RecordsTab prs={prs} trainingMaxes={trainingMaxes} />}
     </Box>
   );
 }

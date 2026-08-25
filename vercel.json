@@ -1,3 +1,13 @@
 {
-  "regions": ["arn1"]
+  "regions": ["arn1"],
+  "crons": [
+    {
+      "path": "/api/cron/reminders?kind=session-day",
+      "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/reminders?kind=overnight-nudge",
+      "schedule": "0 22 * * *"
+    }
+  ]
 }
