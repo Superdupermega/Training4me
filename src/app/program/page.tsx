@@ -9,6 +9,7 @@ import Typography from '@mui/material/Typography';
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
+import { DeleteProgramButton } from '@/components/DeleteProgramButton';
 import { PageContainer } from '@/components/PageContainer';
 import { DuplicateAsRoutineButton } from '@/components/builder/DuplicateAsRoutineButton';
 import { SessionRow } from '@/components/today/SessionRow';
@@ -64,13 +65,14 @@ export default async function ProgramPage() {
             </Stack>
           </Box>
 
-          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap', alignItems: 'flex-start' }}>
             <Button component={Link} href="/program/builder" variant="outlined" size="large">
               Build my own program
             </Button>
             {!(program.input as unknown as { routineId?: string } | null)?.routineId && (
               <DuplicateAsRoutineButton programName={program.name} />
             )}
+            <DeleteProgramButton programName={program.name} />
           </Stack>
 
           <Box

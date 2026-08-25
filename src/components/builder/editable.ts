@@ -47,6 +47,21 @@ export function newClientId(): string {
   return `c${Date.now()}_${counter}`;
 }
 
+export function newDay(name: string): EditableDay {
+  return { id: newClientId(), dayIndex: 0, name, weekday: null, blocks: [] };
+}
+
+/**
+ * Reassigns `dayIndex`/`weekday` to match array order (1-based, sequential —
+ * the same convention `createRoutine` seeds new routines with). Called after
+ * any add/remove/reorder so a day's position in the list is always the
+ * single source of truth for both fields; nothing in the editor lets an
+ * athlete pick a day's weekday independently of where it sits in the week.
+ */
+export function renumberDays(days: EditableDay[]): EditableDay[] {
+  return days.map((d, i) => ({ ...d, dayIndex: i + 1, weekday: i + 1 }));
+}
+
 export function newItem(exerciseId: string): EditableItem {
   return {
     clientId: newClientId(), exerciseId, blockKind: 'secondary', sets: 3,

@@ -192,6 +192,20 @@ export async function persistProgram(program: Program): Promise<string> {
   return data.id;
 }
 
+/**
+ * Clears the active program without touching history: sessions and their
+ * logged sets/PRs stay exactly where they are (nothing here deletes from
+ * `t4m_session`), only the program's `status` moves off `active` so
+ * `getActiveProgram` stops finding it and `/program`/`/today` fall back to
+ * their "no plan yet" state. Symmetrical with the abandon step `persistProgram`
+ * and `scheduleRoutine` already do when a *new* program takes over.
+ */
+export async function abandonActiveProgram(): Promise<void> {
+  const { error } = await db()
+    .from('t4m_program').update({ status: 'abandoned' }).eq('status', 'active');
+  if (error) throw new Error(error.message);
+}
+
 export const listSessions = unstable_cache(
   async (programId: string): Promise<SessionRow[]> => {
     const { data, error } = await db()

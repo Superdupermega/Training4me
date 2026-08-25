@@ -72,6 +72,14 @@ const dark = {
   divider: '#3F4943',
 };
 
+// A card that just draws a 1px border and nothing else reads as a spreadsheet,
+// not a product — real UI gives every surface a little lift off the page.
+// Deliberately restrained (a phone-camera "premium" look is *softer* shadows,
+// not bigger ones) and black-based rather than tinted to the palette, so it
+// keeps working — quietly — over both the light and dark background.
+const CARD_SHADOW = '0 1px 2px rgba(15, 23, 19, 0.06), 0 4px 12px -4px rgba(15, 23, 19, 0.10)';
+const CARD_SHADOW_HOVER = '0 2px 4px rgba(15, 23, 19, 0.08), 0 8px 20px -6px rgba(15, 23, 19, 0.16)';
+
 export const theme = createTheme({
   cssVariables: { colorSchemeSelector: 'data-mui-color-scheme' },
   colorSchemes: { light: { palette: light }, dark: { palette: dark } },
@@ -95,12 +103,52 @@ export const theme = createTheme({
     MuiButton: {
       defaultProps: { variant: 'contained', disableElevation: true },
       styleOverrides: {
-        root: { borderRadius: 999, minHeight: 48, paddingInline: 20 },
+        root: ({ ownerState }) => ({
+          borderRadius: 999, minHeight: 48, paddingInline: 20,
+          transition: 'transform 120ms ease, box-shadow 120ms ease, filter 120ms ease',
+          '&:active': { transform: 'scale(0.98)' },
+          // Only the filled (contained) variant gets a hover lift — outlined
+          // and text buttons stay flat, so the one button per screen that is
+          // actually the primary action is the one that visibly responds.
+          ...(ownerState.variant === 'contained' && {
+            '&:hover': { boxShadow: CARD_SHADOW, filter: 'brightness(1.04)' },
+          }),
+        }),
         sizeLarge: { minHeight: 56, fontSize: '1rem' },
       },
     },
-    MuiCard: { defaultProps: { elevation: 0 }, styleOverrides: { root: { borderRadius: 16 } } },
-    MuiChip: { styleOverrides: { root: { fontWeight: 600 } } },
+    MuiCard: {
+      defaultProps: { elevation: 0 },
+      styleOverrides: {
+        root: {
+          borderRadius: 16, boxShadow: CARD_SHADOW,
+          transition: 'box-shadow 160ms ease',
+          // Lift the whole card, not just the tappable sub-area inside it —
+          // most cards in this app are a CardActionArea plus a side control
+          // (a delete icon, move arrows), so the hover feedback should read
+          // as "this card is interactive", not "this odd-shaped slice is".
+          '&:has(.MuiCardActionArea-root:hover)': { boxShadow: CARD_SHADOW_HOVER },
+        },
+      },
+    },
+    MuiChip: {
+      styleOverrides: {
+        root: { fontWeight: 600 },
+        // Default MUI grey reads as an un-styled fallback; give it the M3
+        // tonal surface instead — but only for a plain, colourless chip.
+        // `color="warning"`/`"info"`/`"primary"` etc. (deload/queued/filter
+        // pills) must keep their real semantic fill, so this only fires for
+        // the untouched `color="default"` case.
+        filled: ({ theme: t, ownerState }) => (
+          // `theme.palette.x.main` is baked to one scheme's literal colour at
+          // stylesheet-generation time; `theme.vars.palette.x.main` is the
+          // live `var(--mui-palette-x-main)` reference that actually swaps
+          // with `data-mui-color-scheme` — the difference between this chip
+          // going invisible in dark mode and not.
+          ownerState.color === 'default' ? { backgroundColor: t.vars.palette.surfaceContainerHigh.main } : {}
+        ),
+      },
+    },
     MuiToggleButton: {
       styleOverrides: { root: { textTransform: 'none', minHeight: 44, borderRadius: 999 } },
     },
@@ -108,6 +156,18 @@ export const theme = createTheme({
     // Every tappable list/card row gets a real touch target, not whatever its
     // content happens to need.
     MuiListItemButton: { styleOverrides: { root: { minHeight: 48 } } },
-    MuiCardActionArea: { styleOverrides: { root: { minHeight: 48 } } },
+    MuiCardActionArea: {
+      styleOverrides: {
+        root: {
+          minHeight: 48,
+          '& .MuiCardActionArea-focusHighlight': { transition: 'opacity 160ms ease' },
+        },
+      },
+    },
+    // A square ripple on a round button is one of the more obvious "this
+    // wasn't designed" tells — round it to match the pill/rounded language
+    // used everywhere else (buttons, cards, chips).
+    MuiIconButton: { styleOverrides: { root: { borderRadius: 12 } } },
+    MuiDialog: { styleOverrides: { paper: { borderRadius: 20 } } },
   },
 });

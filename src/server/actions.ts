@@ -231,6 +231,18 @@ export async function goToPlan(): Promise<never> {
   redirect('/today');
 }
 
+/** Clears the active program (history stays) so the athlete is back at "no plan yet". */
+export async function deleteActiveProgram(): Promise<Result> {
+  try {
+    await repo.abandonActiveProgram();
+    revalidateTag(TAGS.program);
+    revalidateTag(TAGS.sessions);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 // ---------------------------------------------------------------- routine builder (chunk 18)
 
 export async function createRoutine(input: routines.CreateRoutineInput): Promise<Result<{ routineId: string }>> {

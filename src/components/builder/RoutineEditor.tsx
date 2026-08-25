@@ -1,7 +1,9 @@
 'use client';
 import AddIcon from '@mui/icons-material/Add';
+import CalendarViewWeekIcon from '@mui/icons-material/CalendarViewWeek';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
 import DeleteIcon from '@mui/icons-material/Delete';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutlineRounded';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
 import LinkIcon from '@mui/icons-material/Link';
@@ -11,27 +13,33 @@ import Button from '@mui/material/Button';
 import ButtonBase from '@mui/material/ButtonBase';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
 import IconButton from '@mui/material/IconButton';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import Tab from '@mui/material/Tab';
 import Tabs from '@mui/material/Tabs';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { minutes } from '@/components/format';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { ExercisePickerDialog } from '@/components/exercises/ExercisePickerDialog';
 import { adviseOnWeek } from '@/core/builder/advise';
 import { materializeRoutine } from '@/core/builder/materializeRoutine';
 import type { Routine } from '@/core/builder/types';
 import { getExercise } from '@/core/library/exercises';
 import type { Exercise } from '@/core/types';
-import { saveRoutineDays, scheduleRoutine } from '@/server/actions';
+import { archiveRoutine, renameRoutine, saveRoutineDays, scheduleRoutine } from '@/server/actions';
+import { DayManagerDialog } from './DayManagerDialog';
 import {
   fromRoutine, newItem, toRoutineDays,
   type EditableBlock, type EditableDay, type EditableItem,
 } from './editable';
 import { ItemEditorSheet } from './ItemEditorSheet';
+import { MuscleCoverageStrip } from './MuscleCoverageStrip';
+import { coverageFor } from './muscleCoverage';
 
 interface Props {
   routine: Routine;
@@ -60,12 +68,44 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
   const [pending, setPending] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [name, setName] = useState(routine.name);
+  const [dayManagerOpen, setDayManagerOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deletePending, setDeletePending] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const day = days[dayTab]!;
 
   const setDay = (updater: (d: EditableDay) => EditableDay) => {
     setDays((prev) => prev.map((d, i) => (i === dayTab ? updater(d) : d)));
   };
+
+  // Adding/removing/reordering days can leave `dayTab` pointing past the end
+  // (deleted the last day while it was selected) or at a day that shifted —
+  // clamping here, in the one place days ever change shape, means every
+  // caller (the dialog included) can just hand back a new array.
+  function handleDaysChange(next: EditableDay[]) {
+    setDays(next);
+    setDayTab((prev) => Math.min(prev, next.length - 1));
+  }
+
+  async function handleRenameBlur() {
+    const trimmed = name.trim() || 'My program';
+    setName(trimmed);
+    if (trimmed === routine.name) return;
+    const result = await renameRoutine(routine.id, trimmed);
+    if (result.ok) router.refresh();
+    else setError(result.error);
+  }
+
+  async function handleDeleteRoutine() {
+    setDeletePending(true);
+    setDeleteError(null);
+    const result = await archiveRoutine(routine.id);
+    setDeletePending(false);
+    if (result.ok) router.push('/program/builder');
+    else setDeleteError(result.error);
+  }
 
   // Pure src/core code — the estimate and advisories run instantly in the
   // browser, no server round trip, using the exact same cost model
@@ -80,6 +120,8 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
     () => (plan[0] ? adviseOnWeek(plan[0], days.length) : []),
     [plan, days.length],
   );
+  const dayCoverage = useMemo(() => coverageFor([day]), [day]);
+  const weekCoverage = useMemo(() => coverageFor(days), [days]);
 
   function addBlock(exercise: Exercise) {
     setDay((d) => ({ ...d, blocks: [...d.blocks, { clientId: `b${Date.now()}`, items: [newItem(exercise.id)] }] }));
@@ -162,14 +204,37 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
 
   return (
     <Stack spacing={2}>
-      <Tabs value={dayTab} onChange={(_, v) => setDayTab(v)} variant="scrollable" scrollButtons="auto">
-        {days.map((d, i) => <Tab key={d.id} label={d.name} value={i} />)}
-      </Tabs>
+      <TextField
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        onBlur={handleRenameBlur}
+        variant="standard"
+        placeholder="Program name"
+        slotProps={{ htmlInput: { 'aria-label': 'Program name', style: { fontSize: '1.25rem', fontWeight: 600 } } }}
+        fullWidth
+      />
+
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+        <Tabs
+          value={dayTab} onChange={(_, v) => setDayTab(v)} variant="scrollable" scrollButtons="auto"
+          sx={{ flex: 1, minWidth: 0 }}
+        >
+          {days.map((d, i) => <Tab key={d.id} label={d.name} value={i} />)}
+        </Tabs>
+        <IconButton
+          onClick={() => setDayManagerOpen(true)} aria-label="Manage training days"
+          sx={{ width: 48, height: 48, flexShrink: 0 }}
+        >
+          <CalendarViewWeekIcon />
+        </IconButton>
+      </Stack>
 
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
         <Chip size="small" label={`≈ ${minutes(estimatedSec)}`} className="tnum" />
         <Chip size="small" variant="outlined" label={`${day.blocks.length} block${day.blocks.length === 1 ? '' : 's'}`} />
       </Stack>
+
+      <MuscleCoverageStrip label="This day trains" covered={dayCoverage} />
 
       {advisories.length > 0 && (
         <Alert severity="info" variant="outlined">
@@ -197,6 +262,9 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
         Add exercise
       </Button>
 
+      <Divider />
+      <MuscleCoverageStrip label="Whole program trains" covered={weekCoverage} />
+
       {error && <Alert severity="error">{error}</Alert>}
 
       <Stack direction="row" spacing={1.5} sx={{ pt: 1 }}>
@@ -207,6 +275,28 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
           {pending ? 'Working…' : 'Save & start training this'}
         </Button>
       </Stack>
+
+      <Button
+        variant="text" color="error" startIcon={<DeleteOutlineIcon />}
+        onClick={() => setDeleteOpen(true)} sx={{ alignSelf: 'flex-start' }}
+      >
+        Delete this program
+      </Button>
+
+      <DayManagerDialog
+        open={dayManagerOpen} days={days} onChange={handleDaysChange}
+        onClose={() => setDayManagerOpen(false)}
+      />
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Delete this program?"
+        description={<>“{name}” will be removed from your builder. This can’t be undone.</>}
+        confirmLabel="Delete program"
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={handleDeleteRoutine}
+        onClose={() => { if (!deletePending) setDeleteOpen(false); }}
+      />
 
       <ExercisePickerDialog
         open={pickerFor !== null}
@@ -291,7 +381,10 @@ function BlockCard({
           );
         })}
       </Stack>
-      <Button size="small" startIcon={<LinkIcon fontSize="small" />} onClick={onAddPartner} sx={{ m: 1 }}>
+      <Button
+        size="small" variant="text" startIcon={<LinkIcon fontSize="small" />} onClick={onAddPartner}
+        sx={{ m: 1, alignSelf: 'flex-start' }}
+      >
         {isSuperset ? 'Add to superset' : 'Superset with another exercise'}
       </Button>
     </Card>

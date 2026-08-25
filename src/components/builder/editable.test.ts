@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Routine } from '@/core/builder/types';
-import { fromRoutine, newItem, toRoutineDays } from './editable';
+import { fromRoutine, newDay, newItem, renumberDays, toRoutineDays } from './editable';
 
 function baseRoutine(): Routine {
   return {
@@ -80,5 +80,30 @@ describe('editable round-trip', () => {
     expect(item.sets).toBeGreaterThan(0);
     expect(item.tempo).toHaveLength(4);
     expect(item.clientId).toBeTruthy();
+  });
+});
+
+describe('day management', () => {
+  it('newDay starts empty, with a placeholder dayIndex/weekday to be renumbered', () => {
+    const day = newDay('Push');
+    expect(day.name).toBe('Push');
+    expect(day.blocks).toEqual([]);
+    expect(day.id).toBeTruthy();
+  });
+
+  it('renumberDays assigns dayIndex and weekday from array order, 1-based', () => {
+    const days = [newDay('A'), newDay('B'), newDay('C')];
+    const renumbered = renumberDays(days);
+    expect(renumbered.map((d) => d.dayIndex)).toEqual([1, 2, 3]);
+    expect(renumbered.map((d) => d.weekday)).toEqual([1, 2, 3]);
+    // Names and ids are untouched — only position-derived fields change.
+    expect(renumbered.map((d) => d.name)).toEqual(['A', 'B', 'C']);
+  });
+
+  it('renumberDays re-derives indices after a reorder, not just an append', () => {
+    const days = [newDay('A'), newDay('B')];
+    const reversed = renumberDays([days[1]!, days[0]!]);
+    expect(reversed.map((d) => d.name)).toEqual(['B', 'A']);
+    expect(reversed.map((d) => d.dayIndex)).toEqual([1, 2]);
   });
 });
