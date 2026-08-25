@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!--
+    Maskable variant of src/app/icon.svg: full-bleed background (the OS
+    applies its own mask shape, so no rounded corners here) with the
+    barbell glyph scaled into the centre ~80% safe zone, per the maskable
+    icon spec, so a circle/squircle mask never clips it.
+  -->
+  <rect width="64" height="64" fill="#1E5F4B"/>
+  <g fill="#A6F2CD" transform="translate(32 32) scale(0.72) translate(-32 -32)">
+    <rect x="8" y="27" width="6" height="10" rx="2"/>
+    <rect x="50" y="27" width="6" height="10" rx="2"/>
+    <rect x="16" y="23" width="7" height="18" rx="2"/>
+    <rect x="41" y="23" width="7" height="18" rx="2"/>
+    <rect x="23" y="29.5" width="18" height="5" rx="2.5"/>
+  </g>
+</svg>

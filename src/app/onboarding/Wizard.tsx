@@ -194,12 +194,13 @@ export function OnboardingWizard({ bodyweightKg }: { bodyweightKg: number }) {
                     <Chip
                       key={item} label={EQUIPMENT_LABEL[item]}
                       color={on ? 'primary' : 'default'} variant={on ? 'filled' : 'outlined'}
-                      onClick={() => setEquipment((prev) => {
-                        const next: Equipment[] = on
-                          ? prev.filter((e) => e !== item)
-                          : [...prev, item, 'none'];
-                        return next.filter((v, i, a) => a.indexOf(v) === i);
-                      })}
+                      onClick={() => setEquipment((prev) => (
+                        // `'none'` (bodyweight) is already set once, on the profile
+                        // card itself — every PROFILE_EQUIPMENT list includes it —
+                        // so a fine-tune toggle only ever needs to add or remove
+                        // the one item it represents.
+                        on ? prev.filter((e) => e !== item) : [...prev, item]
+                      ))}
                     />
                   );
                 })}

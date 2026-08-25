@@ -8,6 +8,7 @@ import LinkIcon from '@mui/icons-material/Link';
 import Alert from '@mui/material/Alert';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import ButtonBase from '@mui/material/ButtonBase';
 import Card from '@mui/material/Card';
 import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
@@ -245,10 +246,16 @@ function BlockCard({
         <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
           {isSuperset ? 'Superset' : 'Block'}
         </Typography>
-        <IconButton size="small" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move up">
+        <IconButton
+          size="small" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move up"
+          sx={{ width: 48, height: 48 }}
+        >
           <KeyboardArrowUpIcon fontSize="small" />
         </IconButton>
-        <IconButton size="small" disabled={isLast} onClick={() => onMove(1)} aria-label="Move down">
+        <IconButton
+          size="small" disabled={isLast} onClick={() => onMove(1)} aria-label="Move down"
+          sx={{ width: 48, height: 48 }}
+        >
           <KeyboardArrowDownIcon fontSize="small" />
         </IconButton>
       </Stack>
@@ -256,17 +263,28 @@ function BlockCard({
         {block.items.map((item) => {
           const exercise = getExercise(item.exerciseId);
           return (
-            <Stack key={item.clientId} direction="row" spacing={1.5} sx={{ alignItems: 'center', px: 2, py: 1.25 }}>
-              <Box sx={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onEdit(item)}>
-                <Typography variant="h3" noWrap>{exercise.name}</Typography>
-                <Typography variant="body2" color="text.secondary" className="tnum">{summarise(item)}</Typography>
-              </Box>
+            <Stack key={item.clientId} direction="row" spacing={1.5} sx={{ alignItems: 'center', pr: 1, py: 0.5 }}>
+              <ButtonBase
+                onClick={() => onEdit(item)}
+                sx={{ flex: 1, minWidth: 0, justifyContent: 'flex-start', textAlign: 'left', px: 2, py: 0.75 }}
+              >
+                <Box sx={{ minWidth: 0 }}>
+                  <Typography variant="h3" noWrap>{exercise.name}</Typography>
+                  <Typography variant="body2" color="text.secondary" className="tnum">{summarise(item)}</Typography>
+                </Box>
+              </ButtonBase>
               {isSuperset && (
-                <IconButton size="small" onClick={() => onSplit(item.clientId)} aria-label="Split out of superset">
+                <IconButton
+                  size="small" onClick={() => onSplit(item.clientId)} aria-label="Split out of superset"
+                  sx={{ width: 48, height: 48 }}
+                >
                   <CallSplitIcon fontSize="small" />
                 </IconButton>
               )}
-              <IconButton size="small" onClick={() => onRemove(item.clientId)} aria-label="Remove exercise">
+              <IconButton
+                size="small" onClick={() => onRemove(item.clientId)} aria-label="Remove exercise"
+                sx={{ width: 48, height: 48 }}
+              >
                 <DeleteIcon fontSize="small" />
               </IconButton>
             </Stack>

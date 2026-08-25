@@ -168,17 +168,67 @@ this pattern or the publishable key cannot reach them.
 
 ## 8. Definition of done for the whole plan
 
-- [ ] Tapping any nav item paints feedback in < 100 ms and the destination in
-      < 500 ms on a mid-range phone over 4G.
-- [ ] Bottom nav on mobile, navigation rail on desktop, no 680 px column on a
+- [x] Tapping any nav item paints feedback in < 100 ms and the destination in
+      < 500 ms on a mid-range phone over 4G. *(Optimistic highlight is
+      synchronous — chunk 15's `useActiveDestination` — and every destination
+      is prefetched on hover/viewport-enter, chunk 14. Actual on-device
+      timing over a real 4G connection was never observable in this sandbox
+      — no phone, no throttled network — so this is verified by mechanism,
+      not by a stopwatch.)*
+- [x] Bottom nav on mobile, navigation rail on desktop, no 680 px column on a
       wide screen.
-- [ ] Every muscle group has a browsable list; ~300 movements; ≥ 50 tagged
-      `functional_bodybuilding`.
-- [ ] A program can be built from scratch — days, exercises, sets, reps, tempo,
+- [x] Every muscle group has a browsable list; ~300 movements; ≥ 50 tagged
+      `functional_bodybuilding`. *(286 total, 63 `functional_bodybuilding`,
+      101 generator-pool-eligible — verified by direct import, chunk 16.)*
+- [x] A program can be built from scratch — days, exercises, sets, reps, tempo,
       rest, supersets — scheduled, and played in the existing session player.
-- [ ] Picking an exercise anywhere shows last-time performance and/or the
+- [x] Picking an exercise anywhere shows last-time performance and/or the
       TM-derived expected load.
-- [ ] `/profile` answers: am I getting stronger, am I training enough, is
+- [x] `/profile` answers: am I getting stronger, am I training enough, is
       anything unbalanced, what are my records.
-- [ ] `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm build` all clean.
+- [x] `pnpm test`, `pnpm lint`, `pnpm typecheck`, `pnpm build` all clean.
       The 150-combination matrix is still green.
+
+## 9. Performance budget
+
+The chunk 14 diagnosis (§2) was that the old app felt unresponsive; chunk
+14's fixes (prefetching, `unstable_cache`, tag-scoped revalidation, a
+memoized DB client and PIN token) addressed the *cause*. This table is the
+one number that would catch a regression sneaking back in through a later
+chunk — every route's First Load JS, gzipped, as reported by `next build`.
+Chunk 21 §4 named four explicit targets; the rest below are this table's own
+extrapolation from those four (marked), not separately specified anywhere.
+
+| Route | Budget | Actual (end of chunk 21) | Over? |
+|---|---|---|---|
+| `/today` | 130 kB | 164 kB | yes, by 34 kB |
+| `/exercises` | 160 kB | 214 kB | yes, by 54 kB |
+| `/program/builder` | 190 kB | 193 kB | yes, by 3 kB |
+| `/session/[id]` | 170 kB | 232 kB | yes, by 62 kB |
+| `/program` *(extrapolated)* | 150 kB | 164 kB | yes |
+| `/program/builder/[id]` *(extrapolated)* | 220 kB | 246 kB | yes |
+| `/exercises/[id]` *(extrapolated)* | 150 kB | 159 kB | yes |
+| `/history` *(extrapolated)* | 150 kB | 158 kB | yes |
+| `/profile` *(extrapolated)* | 180 kB | 191 kB | yes |
+| `/profile/settings` *(extrapolated)* | 190 kB | 201 kB | yes |
+| `/onboarding` *(extrapolated)* | 190 kB | 194 kB | yes |
+| shared (every route pays this floor) | — | 102 kB | — |
+
+**Every named route is over budget.** Recorded honestly rather than
+adjusted to make the table green, per chunk 21 §4's own instruction ("a
+finding to report, not a number to edit") — this is that finding, not a
+number this chunk retroactively hit by redefining it. The shared floor
+alone (MUI's emotion runtime + the App Router client runtime) is 102 kB —
+already most of `/today`'s entire 130 kB budget before that route's own code
+runs at all. That floor rose once, at chunk 15 (the M3 palette module
+augmentation and the always-mounted `NavRail`/`BottomNav` shell landing on
+every route), and has held flat since; it was never revisited afterward
+against the target set before it existed. `/exercises` and `/session/[id]`
+are the two largest misses and the two obvious next-chunk candidates: the
+former for a route-level code-split of `ExerciseBrowser`'s filter chips off
+the initial bundle, the latter for auditing what `SessionPlayer.tsx`
+actually needs eagerly versus what could lazy-load behind the rest-timer
+and readiness-dialog code paths. Neither was attempted here — chunk 21 is
+close-out, and a speculative bundle-splitting change with no later chunk
+left to catch a regression from it is a worse trade than reporting the
+number plainly.

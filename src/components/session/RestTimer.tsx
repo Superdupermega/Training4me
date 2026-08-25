@@ -68,6 +68,15 @@ export function RestTimer({ endsAt, totalSec, onAdjust, onDismiss }: Props) {
         <Button size="small" variant="outlined" onClick={() => onAdjust(15)} aria-label="Fifteen seconds more">+15s</Button>
         <Button size="small" onClick={onDismiss}>Skip</Button>
       </Stack>
+      {/*
+        The visible timer is aria-live="off" on purpose — announcing every
+        tick of a countdown would drown out everything else on the page.
+        This hidden region instead announces exactly once, the moment rest
+        ends, which is the one state change worth interrupting for.
+      */}
+      <Box aria-live="polite" sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+        {remaining === 0 ? 'Rest is up. Next set.' : ''}
+      </Box>
     </Paper>
   );
 }

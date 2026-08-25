@@ -2,6 +2,7 @@
 import CheckIcon from '@mui/icons-material/Check';
 import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
+import ButtonBase from '@mui/material/ButtonBase';
 import Collapse from '@mui/material/Collapse';
 import IconButton from '@mui/material/IconButton';
 import MenuItem from '@mui/material/MenuItem';
@@ -10,7 +11,7 @@ import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { formatWeight } from '@/components/format';
 import { PAIN_AREAS, type PainArea, type PrescribedSet } from '@/core/types';
 
@@ -45,6 +46,19 @@ export function SetRow({ set, logged, increment, expanded, onExpand, onComplete 
   const [pain, setPain] = useState<PainArea | ''>(logged?.painFlag ?? '');
 
   const done = Boolean(logged);
+
+  // The RPE ≥ 9.5 autoregulation (SessionPlayer) rewrites `set.weightKg` on
+  // sets further down the same lift after a very hard one. This row's own
+  // `key` never changes, so React never remounts it and the initial
+  // useState above would otherwise keep offering the stale, pre-drop
+  // weight. Resync from the prescription whenever it changes — but only
+  // while the set is still unlogged; once submitted, the row shows what was
+  // actually done, not a moving target.
+  useEffect(() => {
+    if (done) return;
+    setReps(set.reps ?? 0);
+    setWeight(set.weightKg ?? 0);
+  }, [set.reps, set.weightKg, done]);
   const isRamp = set.kind === 'ramp';
   const target = set.distanceM
     ? `${set.distanceM} m`
@@ -70,22 +84,26 @@ export function SetRow({ set, logged, increment, expanded, onExpand, onComplete 
         opacity: isRamp && !done ? 0.75 : 1,
       }}
     >
-      <Stack
-        direction="row" spacing={1.5}
-        sx={{ alignItems: 'center', px: 2, py: 1.25, cursor: 'pointer' }}
-        onClick={onExpand}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onExpand(); } }}
-        aria-expanded={expanded}
-      >
-        <Typography variant="overline" color="text.secondary" sx={{ minWidth: 44 }}>
-          {isRamp ? 'Ramp' : `Set ${set.setNumber}`}
-        </Typography>
-        <Typography className="tnum" sx={{ flex: 1, fontWeight: done ? 400 : 600 }}>
-          {target}{set.weightKg ? ` · ${formatWeight(set.weightKg)}` : ''}
-          {set.rpe && !set.weightKg ? ` · RPE ${set.rpe}` : ''}
-        </Typography>
+      {/*
+        Two real, sibling interactive elements — not an IconButton nested
+        inside a role="button" row, which broke keyboard and screen-reader
+        navigation (a button can't contain another button). ButtonBase
+        covers the expand toggle; the completion control is a plain sibling.
+      */}
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', pr: 2 }}>
+        <ButtonBase
+          onClick={onExpand}
+          aria-expanded={expanded}
+          sx={{ flex: 1, minWidth: 0, justifyContent: 'flex-start', gap: 1.5, px: 2, py: 1.25 }}
+        >
+          <Typography variant="overline" color="text.secondary" sx={{ minWidth: 44, textAlign: 'left' }}>
+            {isRamp ? 'Ramp' : `Set ${set.setNumber}`}
+          </Typography>
+          <Typography className="tnum" sx={{ flex: 1, textAlign: 'left', fontWeight: done ? 400 : 600 }}>
+            {target}{set.weightKg ? ` · ${formatWeight(set.weightKg)}` : ''}
+            {set.rpe && !set.weightKg ? ` · RPE ${set.rpe}` : ''}
+          </Typography>
+        </ButtonBase>
         {done ? (
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Typography variant="body2" color="text.secondary" className="tnum">
@@ -97,7 +115,7 @@ export function SetRow({ set, logged, increment, expanded, onExpand, onComplete 
         ) : (
           <IconButton
             aria-label={`Complete set ${set.setNumber}`}
-            onClick={(e) => { e.stopPropagation(); submit(); }}
+            onClick={submit}
             sx={{ width: 56, height: 56, bgcolor: 'action.selected' }}
           >
             <CheckIcon />

@@ -544,3 +544,120 @@ the shape to extend if the Body tab gets built later — it slots in as a
 fifth tab and a fifth parallel fetch, nothing else changes.
 
 **Blocked:** nothing.
+
+## Chunk 21 — Polish, accessibility, PWA, docs — 2026-08-25
+**Landed:** every item in `docs/chunks/chunk-21-polish.md`.
+
+**Defects (§1), 5 fixed + 1 already closed:**
+1. `outbox.ts` — `drain()`'s dedup key now matches `enqueue()`'s exactly
+   (`sessionId:blockLetter:slot:setNumber`, extracted to one shared `key()`
+   function so the two can never drift apart again). Previously `drain()`
+   used a shorter key omitting `sessionId`; a set queued from a *different*
+   session sharing the same block/slot/set-number could be silently
+   dropped on the next successful send.
+2. `SetRow.tsx` — added a `useEffect` resyncing `reps`/`weightKg` from the
+   `set` prop whenever they change and the row isn't `done` yet, fixing a
+   stale-weight display after the RPE ≥ 9.5 autoregulation drops later
+   sets — the row's `key` never changes, so React was never remounting it
+   to pick up the new prescription.
+3. `SetRow.tsx` — the row was `role="button"` wrapping a real `IconButton`
+   (nested interactive elements; breaks keyboard/screen-reader nav). Split
+   into two true siblings: a `ButtonBase` over the expand-toggle text, and
+   the completion control as a separate `IconButton` beside it.
+4. `Math.max(...)` on an empty `sessions` array — already guarded
+   (`?? (sessions.length ? Math.max(...) : 1)`) as a side effect of earlier
+   chunk 15/20 work on `src/app/today/page.tsx`. Verified by grep, no
+   change needed.
+5. `Wizard.tsx` — the equipment fine-tune `Chip` handler no longer pushes
+   `'none'` on every toggle-on; `'none'` is set once, when the profile
+   card itself is chosen (every `PROFILE_EQUIPMENT` list already includes
+   it), so a fine-tune toggle only ever adds or removes the one item it
+   represents.
+6. `bodyweight-split-squat` — already correctly filed under `pattern:
+   'lunge'` in `quads.ts` (verified directly in the file), resolved as a
+   side effect of chunk 16's full muscle-group reorganisation. No action
+   needed.
+
+**Accessibility (§2):** rest timer now announces once, on completion, via
+a hidden `aria-live="polite"` region (`RestTimer.tsx`) — the visible
+countdown stays `aria-live="off"` deliberately, so it doesn't re-announce
+every second. `prefers-reduced-motion` respected globally via one
+`GlobalStyles` media query in `Providers.tsx` covering every MUI
+CSS-transition-driven animation at once. Routine-editor row touch targets
+widened to 48×48 (four `IconButton`s per block row); the exercise-name tap
+target promoted from a bare `onClick`-on-`Box` (invisible to a screen
+reader, unreachable by keyboard) to a real `ButtonBase`. Builder reorder
+was already keyboard-operable — up/down icon buttons, no drag-and-drop
+(chunk 18's own decision, confirmed still true). Contrast spot-checked
+(`text.secondary` on `background.default`, light scheme ≈ 8.9:1) against
+the M3 tonal palette, comfortably over the 4.5:1 minimum by construction.
+
+**PWA (§3):** `manifest.ts` filled out — `id`, `scope`, `orientation:
+'any'` (deliberately not locked to portrait; the app is built to work on
+desktop too), `categories`, a second `maskable`-purpose icon
+(`public/icon-maskable.svg`, barbell glyph scaled into the safe zone).
+`screenshots` deliberately omitted — no way to capture real, populated-app
+screenshots in this sandbox (same live-Supabase network restriction as
+every other chunk's data-path verification); fabricating placeholders
+would be worse than shipping none. A hand-rolled, dependency-free service
+worker (`public/sw.js`) precaches the static shell and a new `/offline`
+fallback page, replacing the browser's own error page on a failed
+navigation — deliberately does **not** cache or serve stale dynamic pages
+(§3's own "no library" scope plus the judgment call in `DECISIONS.md`).
+`/offline` and `/sw.js` added to the PIN-gate middleware's exclusion list
+(a bug caught by an actual `curl` smoke test — `sw.js` was 307-redirecting
+to `/unlock` before the fix, which would have broken registration
+outright). Stale Next.js starter SVGs deleted from `public/` (confirmed
+unused by grep first).
+
+**Performance budget (§4):** formalized as `docs/06-REDESIGN-PLAN.md` §9.
+Every named route is over its chunk-21-specified budget — `/today` by
+34 kB, `/exercises` by 54 kB, `/program/builder` by 3 kB, `/session/[id]`
+by 62 kB — recorded as the finding §4 itself said to report, not adjusted.
+Root cause: the 102 kB shared floor (MUI emotion runtime + App Router
+client runtime) rose once, at chunk 15, and was never reconciled against
+targets set before that shell existed. `/exercises` and `/session/[id]`
+named as the two largest misses and the two clearest next-chunk
+candidates (code-splitting `ExerciseBrowser`'s filters; auditing
+`SessionPlayer.tsx`'s eager-loaded rest-timer/readiness-dialog code) —
+neither attempted here, since a speculative bundle change with no further
+chunk left to catch a regression from it is worse than reporting plainly.
+
+**Documentation (§5):** `docs/02-DATA-MODEL.md` fully rewritten around the
+live `t4m_*` schema — pulled directly from Supabase (`list_tables`,
+`pg_policies`, `pg_indexes`), not reconstructed from memory — with the
+original never-built multi-user design preserved verbatim as a marked
+appendix. `docs/04-DESIGN-SYSTEM.md` §4 (nav) and §5 (screens) rewritten
+for the five-destination IA — `/today`, `/program` + `/program/builder`,
+`/exercises` + `/exercises/[id]`, `/history`, `/profile` +
+`/profile/settings` — replacing the old `/plan`/`/settings`-era
+descriptions. `README.md` updated: the builder, the exercise library, the
+`arn1`-region reasoning, the offline/PWA section, `pnpm test`'s real count
+(242), and the route list in Layout.
+
+**Verified:** 242 tests, unchanged from chunk 20 (no new pure logic this
+chunk warranted its own test beyond the existing suite). Lint, typecheck,
+build all clean, run repeatedly across every batch of edits in this
+chunk. `curl` smoke tests against a real `pnpm build && pnpm start`
+confirmed: `/offline` and `/sw.js` both 200 (not redirected), `/sw.js`
+serves real JS content, `manifest.webmanifest` includes every new field,
+`/icon-maskable.svg` reachable, and `/today` still correctly 307s to
+`/unlock` with no PIN cookie presented — the PIN gate itself is untouched
+by the exclusion-list changes. First-load JS table in §9 is from this
+same `next build` run.
+
+**Deviated:** none beyond what's recorded above and in `DECISIONS.md` —
+every §1–§5 item shipped as scoped; the one open item is the performance
+budget itself, which chunk 21 §4 explicitly defines as a finding to
+report rather than something this chunk was expected to close out.
+
+**Blocked:** nothing. This closes `docs/06-REDESIGN-PLAN.md` — chunks
+14 through 21 are complete. Every explicit item from the original task
+(material design mobile-first-but-works-on-desktop, a five-destination IA
+that makes sense, a StrengthLog-style self-service program builder, an
+extensive per-muscle-group exercise list including Marcus Filly's
+functional-bodybuilding style, a responsive app with the chunk-14
+performance causes addressed, an advanced-but-usable log/analysis page on
+`/profile`, and last-time-or-expected-load shown wherever an exercise is
+picked) has shipped and is covered by the definition of done in
+`06-REDESIGN-PLAN.md` §8. No further chunks are planned.

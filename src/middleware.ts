@@ -45,9 +45,15 @@ export const config = {
   // Everything except: Next's own asset pipeline (in full, not just the
   // static/image sub-paths — an RSC prefetch or a webpack-hmr request under
   // any other _next/* sub-path used to still pay for an Edge invocation),
-  // the unlock page itself (no reason to gate the gate), and static files
-  // that need no lock at all.
+  // the unlock page itself (no reason to gate the gate), the offline
+  // fallback the service worker precaches and serves with no network at all
+  // (same reasoning — gating it would just mean an offline visitor bounces
+  // to /unlock, which is equally unreachable with no connection), sw.js
+  // itself (a browser fetches a service-worker script directly and rejects
+  // anything but a real JS response — a redirect to /unlock's HTML fails
+  // registration outright, not gracefully), and static files that need no
+  // lock at all.
   matcher: [
-    '/((?!_next/|unlock|favicon.ico|manifest.webmanifest|icon.*|.*\\.svg$).*)',
+    '/((?!_next/|unlock|offline|sw\\.js|favicon.ico|manifest.webmanifest|icon.*|.*\\.svg$).*)',
   ],
 };

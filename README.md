@@ -2,9 +2,14 @@
 
 **Live: https://training4me.vercel.app**
 
-A personal training app. You say how many days a week you can train; it builds a
-full block — every week, every session, every set — then walks you through each
-session and logs it.
+A personal training app, StrengthLog-flavoured. You say how many days a week
+you can train and it builds a full block — every week, every session, every
+set — then walks you through each session and logs it. Or skip the generator
+entirely and build your own program, day by day, exercise by exercise, from
+a library of ~300 movements across every muscle group (Marcus Filly's
+functional-bodybuilding style tagged and browsable on its own). Either way
+it plays in the same session player, logs to the same history, and shows up
+on the same analysis page.
 
 **The philosophy**, in one sentence: a heavy barbell base done submaximally and
 repeatably (Magnus Samuelsson), wrapped in primers, tempo, unilateral work and
@@ -46,6 +51,12 @@ is auto-detected and there is nothing to configure for it to run.
 2. Deploy. That's the whole setup.
 
 Every push to the repo's default branch deploys automatically after that.
+`vercel.json` pins the deployment to the **`arn1`** (Stockholm) region —
+next to the Supabase project itself (`eu-north-1`) — so every server-rendered
+page and server action makes one short hop to the database instead of a
+transatlantic one. This is a large share of why the app feels responsive at
+all; moving the Supabase project or Vercel's regions out of sync with each
+other would quietly undo it.
 
 ### Turn on the lock
 
@@ -87,15 +98,12 @@ and wrong guesses are slowed down — but none of that saves a four-digit PIN fr
 being guessed. Something like `bench-105-in-may` is easy to type on a phone and
 not worth anyone's time to attack.
 
-On your phone, open the deployed URL and use *Add to Home Screen*; it installs
-as a standalone app and the session player keeps working without signal.
-
 ## Commands
 
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Run locally |
-| `pnpm test` | 205 unit tests, including the 150-combination generator matrix |
+| `pnpm test` | 242 unit tests, including the 150-combination generator matrix |
 | `pnpm lint` | ESLint, including the rule that keeps `src/core` pure |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm build` | Production build |
@@ -128,6 +136,24 @@ enforces it, which is why the whole thing is testable in about four seconds.
 experience × equipment × block length and asserts every constraint holds and
 every session fits. It is the reason to trust the thing.
 
+## Building it yourself
+
+`/program/builder` is the other way to get a program — no generator, no
+balance rules, just you choosing exercises for each day. Pick from the same
+~300-exercise library `/exercises` browses (filterable by muscle group and
+by style, including a Marcus Filly / functional-bodybuilding tag), set the
+sets/reps/tempo/rest and how the weight is decided (a fixed weight, an RPE,
+a %-of-training-max, or bodyweight/duration/distance for the rest), and
+arrange it into supersets if you want. Every time you pick an exercise —
+here or in the generated plan — you see either what you actually did last
+time for that exact exercise, or, if you never have, what's expected of it
+given your training max in the underlying lift (`ExerciseContextPanel`,
+`src/server/exerciseContext.ts`). **Schedule this program** turns the
+routine into real dated sessions that play in the exact same session
+player as a generated block — nothing downstream of that point can tell the
+two apart. A generated program can also be duplicated back into an editable
+routine if you want to start from it rather than a blank week.
+
 ## How it adapts
 
 - **Before a session** — three sliders (sleep, body, head). Low readiness drops
@@ -147,14 +173,27 @@ flushed opportunistically; the server upsert is keyed on
 `(session, block, slot, set)`, so replaying the queue after a dead spot in the
 gym can never duplicate a set. A chip shows how many are still queued.
 
+Separately, a small hand-rolled service worker (`public/sw.js`, no library)
+covers the case above that: not "a set won't send," but "the app itself
+can't load right now." It precaches the static shell and swaps in a
+branded `/offline` screen instead of the browser's own error page when a
+page navigation can't reach the network — it does not cache dynamic pages,
+on purpose, since a stale cached session or history page would be actively
+misleading.
+
+On your phone, open the deployed URL and use *Add to Home Screen*; it
+installs as a standalone app (`src/app/manifest.ts`) and the session player
+keeps logging sets without signal, per the outbox above.
+
 ## Layout
 
 ```
-src/core/        pure training logic — library, generator, time budget, progression
+src/core/        pure training logic — library, generator, time budget, progression, builder
 src/server/      Supabase access and server actions (server-only)
-src/components/  UI, including the session player
-src/app/         routes: /onboarding /plan /session/[id] /history /settings
-docs/            the original build plan and the methodology spec
+src/components/  UI, including the session player, the nav shell, and the routine builder
+src/app/         routes: /onboarding /today /program /program/builder /exercises
+                  /history /profile /profile/settings /session/[id]
+docs/            the original build plan, the methodology spec, and the redesign plan
 ```
 
 `docs/01-METHODOLOGY.md` is the written spec the code implements. Where the code

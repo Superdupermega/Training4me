@@ -9,9 +9,10 @@ const KEY = 't4m-outbox';
  * first and are flushed opportunistically; the server upsert is keyed on
  * (session, block, slot, set) so replaying the queue can never duplicate.
  */
+const key = (r: LoggedSetRow) => `${r.sessionId}:${r.blockLetter}:${r.slot}:${r.setNumber}`;
+
 export async function enqueue(row: LoggedSetRow): Promise<number> {
   const queue = (await get<LoggedSetRow[]>(KEY)) ?? [];
-  const key = (r: LoggedSetRow) => `${r.sessionId}:${r.blockLetter}:${r.slot}:${r.setNumber}`;
   const next = [...queue.filter((r) => key(r) !== key(row)), row];
   await set(KEY, next);
   return next.length;
@@ -29,9 +30,12 @@ export async function drain(
   const result = await send(queue);
   if (!result.ok) return queue.length;
   // Only clear what we sent; anything logged during the flush survives.
+  // Keyed on the full (session, block, slot, set) tuple — a set logged in a
+  // *different* session that happened to share block/slot/set-number would
+  // otherwise be dropped here without ever being sent.
   const after = await peek();
-  const sent = new Set(queue.map((r) => `${r.blockLetter}:${r.slot}:${r.setNumber}`));
-  const remaining = after.filter((r) => !sent.has(`${r.blockLetter}:${r.slot}:${r.setNumber}`));
+  const sent = new Set(queue.map(key));
+  const remaining = after.filter((r) => !sent.has(key(r)));
   if (remaining.length === 0) await del(KEY);
   else await set(KEY, remaining);
   return remaining.length;
