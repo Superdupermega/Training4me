@@ -11,6 +11,7 @@ import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea,
 import * as analytics from './analytics';
 import { requireUnlocked } from './authGuard';
 import { exerciseContext, type ExerciseContext } from './exerciseContext';
+import * as push from './push';
 import * as repo from './repo';
 import { TAGS } from './repo';
 import * as routines from './routines';
@@ -411,6 +412,28 @@ export async function getE1rmSeries(exerciseId: string): Promise<Result<Awaited<
     await requireUnlocked();
     const data = await analytics.e1rmSeries(exerciseId);
     return { ok: true, data };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------- push notifications (#24)
+
+export async function subscribeToPush(subscription: push.PushSubscriptionInput): Promise<Result> {
+  try {
+    await requireUnlocked();
+    await push.savePushSubscription(subscription);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function unsubscribeFromPush(endpoint: string): Promise<Result> {
+  try {
+    await requireUnlocked();
+    await push.deletePushSubscription(endpoint);
+    return { ok: true };
   } catch (err) {
     return fail(err);
   }

@@ -111,7 +111,7 @@ attack.
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Run locally |
-| `pnpm test` | 242 unit tests, including the 150-combination generator matrix |
+| `pnpm test` | 283 unit tests, including the 150-combination generator matrix |
 | `pnpm lint` | ESLint, including the rule that keeps `src/core` pure |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm build` | Production build |
@@ -202,7 +202,8 @@ src/components/  UI, including the session player, the nav shell, and the routin
 src/app/         routes: /onboarding /today /program /program/builder /exercises
                   /history /profile /profile/settings /profile/export /session/[id]
 docs/            the original build plan, the methodology spec, the redesign plan,
-                  and the production review (07) with its RLS-tightening follow-up (08)
+                  and the production review (07) with its RLS-tightening (08) and
+                  push-notification (09) setup follow-ups
 ```
 
 `docs/01-METHODOLOGY.md` is the written spec the code implements. Where the code
