@@ -38,10 +38,14 @@ function materializeSet(item: RoutineItem, setNumber: number): PrescribedSet {
   const base: PrescribedSet = { setNumber, kind: 'working', restSec: item.restSec, estimatedSec: 0 };
 
   switch (item.targetKind) {
+    // A loaded carry or weighted hold tracks its weight independently of
+    // targetKind (the builder's "Added weight" field, gated on
+    // `showsSeparateWeightField` — see targeting.ts) — carry it through here
+    // so it actually reaches the session, not just the editor.
     case 'duration':
-      return { ...base, durationSec: item.durationSec ?? undefined };
+      return { ...base, durationSec: item.durationSec ?? undefined, perSide: item.perSide, weightKg: item.weightKg ?? undefined };
     case 'distance':
-      return { ...base, distanceM: item.distanceM ?? undefined };
+      return { ...base, distanceM: item.distanceM ?? undefined, perSide: item.perSide, weightKg: item.weightKg ?? undefined };
     case 'bodyweight':
       return { ...base, reps: item.repLo ?? item.repHi ?? 8, perSide: item.perSide };
     case 'weight':

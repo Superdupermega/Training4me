@@ -81,6 +81,24 @@ describe('editable round-trip', () => {
     expect(item.tempo).toHaveLength(4);
     expect(item.clientId).toBeTruthy();
   });
+
+  it('newItem pre-fills a distance movement with a distance target and no rep range', () => {
+    const item = newItem('farmer-carry');
+    expect(item.targetKind).toBe('distance');
+    expect(item.repLo).toBeNull();
+    expect(item.repHi).toBeNull();
+    expect(item.distanceM).toBeGreaterThan(0);
+    expect(item.durationSec).toBeNull();
+  });
+
+  it('newItem still defaults a reps movement to RPE with a rep range from the exercise', () => {
+    const item = newItem('bench-press');
+    expect(item.targetKind).toBe('rpe');
+    expect(item.repLo).toBeGreaterThan(0);
+    expect(item.repHi).toBeGreaterThan(0);
+    expect(item.distanceM).toBeNull();
+    expect(item.durationSec).toBeNull();
+  });
 });
 
 describe('day management', () => {

@@ -1,4 +1,6 @@
+import { targetOptionsFor, usesReps } from '@/core/builder/targeting';
 import type { Routine, RoutineDay, RoutineItem, TargetKind } from '@/core/builder/types';
+import { getExercise } from '@/core/library/exercises';
 import type { BlockKind } from '@/core/types';
 
 /**
@@ -62,11 +64,28 @@ export function renumberDays(days: EditableDay[]): EditableDay[] {
   return days.map((d, i) => ({ ...d, dayIndex: i + 1, weekday: i + 1 }));
 }
 
+/**
+ * Pre-fills from the exercise itself, not a one-size-fits-all guess: a
+ * distance movement (a farmer carry) starts on `targetKind: 'distance'`
+ * with no rep range, not on the RPE/8-12-reps default that made sense for a
+ * bench press but never for a carry. See `targeting.ts` for the exercise ->
+ * target-kind logic this leans on.
+ */
 export function newItem(exerciseId: string): EditableItem {
+  const exercise = getExercise(exerciseId);
+  const targetKind = targetOptionsFor(exercise)[0]!;
+  const reps = usesReps(targetKind);
   return {
     clientId: newClientId(), exerciseId, blockKind: 'secondary', sets: 3,
-    repLo: 8, repHi: 12, tempo: '30X1', restSec: 90, targetKind: 'rpe',
-    percentTm: null, rpe: 8, weightKg: null, durationSec: null, distanceM: null, perSide: false,
+    repLo: reps ? exercise.repLo : null,
+    repHi: reps ? exercise.repHi : null,
+    tempo: exercise.defaultTempo, restSec: 90, targetKind,
+    percentTm: null,
+    rpe: targetKind === 'rpe' ? 8 : null,
+    weightKg: null,
+    durationSec: targetKind === 'duration' ? 45 : null,
+    distanceM: targetKind === 'distance' ? 30 : null,
+    perSide: exercise.unilateral,
   };
 }
 

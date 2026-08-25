@@ -136,6 +136,34 @@ describe('materializeRoutine', () => {
     expect(week3Set.rpe).toBe(week1Set.rpe);
   });
 
+  it('carries the "added weight" field through for a loaded carry, alongside its distance and per-side flag', () => {
+    const r = routine([
+      item({
+        id: 'i1', position: 1, blockLetter: 'A', exerciseId: 'farmer-carry',
+        targetKind: 'distance', distanceM: 30, weightKg: 24, perSide: false, rpe: null,
+      }),
+    ]);
+    const plan = materializeRoutine(r, args);
+    const set = plan[0]!.sessions[0]!.blocks[0]!.exercises[0]!.sets[0]!;
+    expect(set.distanceM).toBe(30);
+    expect(set.weightKg).toBe(24);
+    expect(set.reps).toBeUndefined();
+  });
+
+  it('carries weight and per-side through for a duration target too — a suitcase carry timed, not paced', () => {
+    const r = routine([
+      item({
+        id: 'i1', position: 1, blockLetter: 'A', exerciseId: 'suitcase-carry',
+        targetKind: 'duration', durationSec: 40, weightKg: 20, perSide: true, rpe: null,
+      }),
+    ]);
+    const plan = materializeRoutine(r, args);
+    const set = plan[0]!.sessions[0]!.blocks[0]!.exercises[0]!.sets[0]!;
+    expect(set.durationSec).toBe(40);
+    expect(set.weightKg).toBe(20);
+    expect(set.perSide).toBe(true);
+  });
+
   it('advances the date by a week for each successive week', () => {
     const r = routine(
       [item({ id: 'i1', position: 1, blockLetter: 'A', exerciseId: 'back-squat', blockKind: 'main' })],

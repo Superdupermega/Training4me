@@ -14,6 +14,7 @@ import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import { useEffect, useState } from 'react';
 import { ExerciseContextPanel } from '@/components/exercises/ExerciseContext';
+import { showsSeparateWeightField, targetOptionsFor, usesReps } from '@/core/builder/targeting';
 import { getExercise } from '@/core/library/exercises';
 import { BLOCK_KINDS, type BlockKind } from '@/core/types';
 import { getExerciseContexts } from '@/server/actions';
@@ -68,6 +69,17 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
   const exercise = getExercise(draft.exerciseId);
   const set = (patch: Partial<EditableItem>) => setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
 
+  // Only the target kinds that actually make sense for this movement — a
+  // distance exercise never offers %TM/RPE/reps, and vice versa. The saved
+  // value is kept in the list even if it's since fallen outside that set
+  // (older data, or a movement whose metric changed), so it's never silently
+  // dropped out from under the athlete.
+  const targetOptions = targetOptionsFor(exercise);
+  const menuOptions = targetOptions.includes(draft.targetKind) ? targetOptions : [draft.targetKind, ...targetOptions];
+  const reps = usesReps(draft.targetKind);
+  const showWeightField = showsSeparateWeightField(exercise, draft.targetKind);
+  const perSideLabel = reps ? 'Reps are per side' : draft.targetKind === 'distance' ? 'Distance is per side' : 'Duration is per side';
+
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
       <DialogTitle>{exercise.name}</DialogTitle>
@@ -89,19 +101,23 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
               onChange={(e) => set({ sets: Math.max(1, Number(e.target.value) || 1) })}
               slotProps={{ htmlInput: { min: 1, max: 20 } }}
             />
-            <TextField
-              label="Reps low" type="number" size="small" value={draft.repLo ?? ''}
-              onChange={(e) => set({ repLo: e.target.value ? Number(e.target.value) : null })}
-            />
-            <TextField
-              label="Reps high" type="number" size="small" value={draft.repHi ?? ''}
-              onChange={(e) => set({ repHi: e.target.value ? Number(e.target.value) : null })}
-            />
+            {reps && (
+              <>
+                <TextField
+                  label="Reps low" type="number" size="small" value={draft.repLo ?? ''}
+                  onChange={(e) => set({ repLo: e.target.value ? Number(e.target.value) : null })}
+                />
+                <TextField
+                  label="Reps high" type="number" size="small" value={draft.repHi ?? ''}
+                  onChange={(e) => set({ repHi: e.target.value ? Number(e.target.value) : null })}
+                />
+              </>
+            )}
           </Stack>
 
           <FormControlLabel
             control={<Switch checked={draft.perSide} onChange={(e) => set({ perSide: e.target.checked })} />}
-            label="Reps are per side"
+            label={perSideLabel}
           />
 
           <Stack direction="row" spacing={2}>
@@ -119,10 +135,24 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
 
           <TextField
             select label="Target" size="small" value={draft.targetKind}
-            onChange={(e) => set({ targetKind: e.target.value as EditableItem['targetKind'] })}
+            helperText={`Options are limited to what makes sense for ${exercise.name} — it's measured in ${exercise.metric}.`}
+            onChange={(e) => {
+              const targetKind = e.target.value as EditableItem['targetKind'];
+              const nowReps = usesReps(targetKind);
+              set({
+                targetKind,
+                // Reps and distance/duration are mutually exclusive on a set
+                // — switching families clears the one that no longer applies
+                // instead of leaving a stale number behind.
+                repLo: nowReps ? (draft.repLo ?? exercise.repLo) : null,
+                repHi: nowReps ? (draft.repHi ?? exercise.repHi) : null,
+                durationSec: targetKind === 'duration' ? (draft.durationSec ?? 45) : null,
+                distanceM: targetKind === 'distance' ? (draft.distanceM ?? 30) : null,
+              });
+            }}
           >
-            {Object.entries(TARGET_LABEL).map(([k, label]) => (
-              <MenuItem key={k} value={k}>{label}</MenuItem>
+            {menuOptions.map((k) => (
+              <MenuItem key={k} value={k}>{TARGET_LABEL[k]}</MenuItem>
             ))}
           </TextField>
 
@@ -160,6 +190,13 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
             <TextField
               label="Distance (metres)" type="number" size="small" value={draft.distanceM ?? ''}
               onChange={(e) => set({ distanceM: e.target.value ? Number(e.target.value) : null })}
+            />
+          )}
+          {showWeightField && (
+            <TextField
+              label="Added weight (kg)" type="number" size="small" value={draft.weightKg ?? ''}
+              onChange={(e) => set({ weightKg: e.target.value ? Number(e.target.value) : null })}
+              helperText="What's carried/held for this movement — leave blank for bodyweight only."
             />
           )}
         </Stack>

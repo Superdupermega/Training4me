@@ -32,6 +32,7 @@ import type { Routine } from '@/core/builder/types';
 import { getExercise } from '@/core/library/exercises';
 import type { Exercise } from '@/core/types';
 import { archiveRoutine, renameRoutine, saveRoutineDays, scheduleRoutine } from '@/server/actions';
+import { ADVISORY_COPY } from './advisoryCopy';
 import { DayManagerDialog } from './DayManagerDialog';
 import {
   fromRoutine, newItem, toRoutineDays,
@@ -51,12 +52,19 @@ interface Props {
 function summarise(item: EditableItem): string {
   const reps = item.repLo && item.repHi && item.repLo !== item.repHi
     ? `${item.repLo}–${item.repHi}` : item.repLo ?? item.repHi ?? '';
+  // A distance/duration item has no reps to show — just the set count; the
+  // distance or time itself is reported below, in `target`.
+  const setsPart = reps ? `${item.sets} × ${reps}${item.perSide ? '/side' : ''}` : `${item.sets} set${item.sets === 1 ? '' : 's'}`;
   const target = item.targetKind === 'percent_tm' && item.percentTm ? `@ ${item.percentTm}% TM`
     : item.targetKind === 'rpe' && item.rpe ? `@ RPE ${item.rpe}`
       : item.targetKind === 'weight' && item.weightKg ? `@ ${item.weightKg} kg`
-        : item.targetKind === 'duration' && item.durationSec ? `${Math.round(item.durationSec / 60)} min`
-          : item.targetKind === 'distance' && item.distanceM ? `${item.distanceM} m` : '';
-  return [`${item.sets} × ${reps}${item.perSide ? '/side' : ''}`, target].filter(Boolean).join(' ');
+        : item.targetKind === 'duration' && item.durationSec ? `${Math.round(item.durationSec / 60)} min${item.perSide ? '/side' : ''}`
+          : item.targetKind === 'distance' && item.distanceM ? `${item.distanceM} m${item.perSide ? '/side' : ''}` : '';
+  // A loaded carry/hold tracks weight independently of targetKind (the
+  // builder's "Added weight" field) — surface it here too.
+  const addedWeight = (item.targetKind === 'duration' || item.targetKind === 'distance') && item.weightKg
+    ? `@ ${item.weightKg} kg` : '';
+  return [setsPart, target, addedWeight].filter(Boolean).join(' ');
 }
 
 export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }: Props) {
@@ -238,7 +246,26 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
 
       {advisories.length > 0 && (
         <Alert severity="info" variant="outlined">
-          {advisories.map((v) => v.message).join(' · ')}
+          <Stack spacing={1.25}>
+            {advisories.map((v) => {
+              const copy = ADVISORY_COPY[v.code];
+              return (
+                <Box key={v.code}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>{v.message}</Typography>
+                  {copy && (
+                    <>
+                      <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.25 }}>
+                        {copy.why}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" component="p" sx={{ fontStyle: 'italic' }}>
+                        {copy.suggest(v)}
+                      </Typography>
+                    </>
+                  )}
+                </Box>
+              );
+            })}
+          </Stack>
         </Alert>
       )}
 

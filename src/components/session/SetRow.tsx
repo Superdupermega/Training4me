@@ -67,9 +67,9 @@ export function SetRow({
   }, [set.reps, set.weightKg, done]);
   const isRamp = set.kind === 'ramp';
   const target = set.distanceM
-    ? `${set.distanceM} m`
+    ? `${set.distanceM} m${set.perSide ? '/side' : ''}`
     : set.durationSec
-      ? `${Math.round(set.durationSec / 60)} min`
+      ? `${Math.round(set.durationSec / 60)} min${set.perSide ? '/side' : ''}`
       : `${set.reps}${set.perSide ? '/side' : ''} reps`;
 
   const submit = () =>
@@ -135,7 +135,7 @@ export function SetRow({
 
       <Collapse in={expanded} unmountOnExit>
         <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
-          {!set.distanceM && !set.durationSec && (
+          {!set.distanceM && !set.durationSec ? (
             <Stack spacing={0.5}>
               <Stack direction="row" spacing={2}>
                 <Stepper label="Reps" value={reps} step={1} onChange={setReps} />
@@ -150,6 +150,11 @@ export function SetRow({
                 </Typography>
               )}
             </Stack>
+          ) : set.weightKg != null && (
+            // A loaded carry or weighted hold — no reps to log, but the
+            // weight actually held is still worth adjusting (a different
+            // dumbbell than prescribed, say) rather than being locked in.
+            <Stepper label="Weight (kg)" value={weight} step={increment} onChange={setWeight} />
           )}
           <Box>
             <Typography variant="overline" color="text.secondary">How hard was it?</Typography>
