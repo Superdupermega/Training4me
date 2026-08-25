@@ -1,10 +1,12 @@
+import Box from '@mui/material/Box';
 import Button from '@mui/material/Button';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { SessionPlayer } from '@/components/session/SessionPlayer';
 import type { LoggedValue } from '@/components/session/SetRow';
+import { TopBar } from '@/components/nav/TopBar';
 import type { PainArea } from '@/core/types';
 import { getLoggedSets, getProfile, getSession } from '@/server/repo';
 
@@ -17,13 +19,15 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
 
   if (session.status === 'completed') {
     return (
-      <Stack spacing={2} sx={{ maxWidth: 680, mx: 'auto', p: 3 }}>
-        <Typography variant="h1">{session.title}</Typography>
-        <Typography color="text.secondary">
-          Done on {session.completedAt?.slice(0, 10)} in {Math.round((session.actualSec ?? 0) / 60)} minutes.
-        </Typography>
-        <Button component={Link} href="/plan">Back to plan</Button>
-      </Stack>
+      <Box sx={{ minHeight: '100dvh' }}>
+        <TopBar title={session.title} backHref="/today" />
+        <Stack spacing={2} sx={{ maxWidth: 680, mx: 'auto', p: 3 }}>
+          <Typography color="text.secondary">
+            Done on {session.completedAt?.slice(0, 10)} in {Math.round((session.actualSec ?? 0) / 60)} minutes.
+          </Typography>
+          <Button component={Link} href="/today">Back to today</Button>
+        </Stack>
+      </Box>
     );
   }
 

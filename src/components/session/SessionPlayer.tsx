@@ -18,6 +18,7 @@ import Typography from '@mui/material/Typography';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { minutes } from '@/components/format';
+import { TopBar } from '@/components/nav/TopBar';
 import { getExercise } from '@/core/library/exercises';
 import type { Readiness, SessionBlock } from '@/core/types';
 import { beginSession, finishSession, logSets } from '@/server/actions';
@@ -123,7 +124,7 @@ export function SessionPlayer({ session, increment, initialLogged }: Props) {
   const elapsed = Math.max(0, Math.round((now - startedAt) / 1000));
 
   return (
-    <Box sx={{ maxWidth: 680, mx: 'auto', px: 2, pt: 2, pb: rest ? 16 : 12 }}>
+    <Box sx={{ minHeight: '100dvh', pb: rest ? 16 : 12 }}>
       <ReadinessDialog
         open={askReadiness}
         onSkip={() => { setAskReadiness(false); beginSession(session.id, null); }}
@@ -134,12 +135,17 @@ export function SessionPlayer({ session, increment, initialLogged }: Props) {
         }}
       />
 
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', mb: 0.5 }}>
-        <Typography variant="h1" sx={{ flex: 1 }}>{session.title}</Typography>
-        <Typography className="tnum" variant="h3" color="text.secondary">
-          {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
-        </Typography>
-      </Stack>
+      <TopBar
+        title={session.title}
+        backHref="/today"
+        action={
+          <Typography className="tnum" variant="h3" color="text.secondary">
+            {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+          </Typography>
+        }
+      />
+
+      <Box sx={{ maxWidth: 680, mx: 'auto', px: 2, pt: 2 }}>
       <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap', gap: 1 }}>
         <Chip size="small" label={`≈ ${minutes(session.estimatedSec)} planned`} />
         <Chip size="small" label={`${totals.done}/${totals.total} sets`} className="tnum" />
@@ -215,6 +221,7 @@ export function SessionPlayer({ session, increment, initialLogged }: Props) {
           </Accordion>
         );
       })}
+      </Box>
 
       <Paper
         elevation={0}
@@ -260,7 +267,7 @@ export function SessionPlayer({ session, increment, initialLogged }: Props) {
             onClick={async () => {
               await flush();
               await finishSession(session.id, elapsed);
-              router.push('/plan');
+              router.push('/today');
             }}
           >
             Finish

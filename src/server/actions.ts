@@ -223,5 +223,5 @@ export async function startNextBlock(): Promise<Result> {
 }
 
 export async function goToPlan(): Promise<never> {
-  redirect('/plan');
+  redirect('/today');
 }

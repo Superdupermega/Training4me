@@ -5,6 +5,7 @@ import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { AppShell } from '@/components/AppShell';
+import { PageContainer } from '@/components/PageContainer';
 import { WEEKDAY } from '@/components/format';
 import { getExercise } from '@/core/library/exercises';
 import { readinessBand } from '@/core/progression/readiness';
@@ -20,10 +21,8 @@ export default async function HistoryPage() {
   const [sessions, prs] = await Promise.all([recentSessions(), listPRs()]);
 
   return (
-    <AppShell>
-      <Stack spacing={3}>
-        <Typography variant="h1">History</Typography>
-
+    <AppShell title="History">
+      <PageContainer width="wide">
         <Box>
           <Typography variant="overline" color="text.secondary">Personal records</Typography>
           {prs.length === 0 ? (
@@ -85,7 +84,7 @@ export default async function HistoryPage() {
             </Card>
           )}
         </Box>
-      </Stack>
+      </PageContainer>
     </AppShell>
   );
 }

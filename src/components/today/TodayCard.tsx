@@ -11,7 +11,7 @@ import type { SessionRow } from '@/server/repo';
 export function TodayCard({ session, isToday }: { session: SessionRow; isToday: boolean }) {
   const main = mainLiftOf(session.blocks);
   return (
-    <Card sx={{ p: 2.5, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+    <Card sx={{ p: 2.5, bgcolor: 'primaryContainer.main', color: 'primaryContainer.contrastText' }}>
       <Stack spacing={1.5}>
         <Box>
           <Typography variant="overline" sx={{ opacity: 0.85 }}>
@@ -26,12 +26,18 @@ export function TodayCard({ session, isToday }: { session: SessionRow; isToday: 
           </Box>
         )}
         <Stack direction="row" spacing={1}>
+          {/* Outlined + `color: inherit` rides on the card's own contrastText,
+              so it stays legible against primaryContainer in both schemes —
+              a fixed white-on-alpha chip was the fix's whole point. */}
           <Chip
-            size="small" label={`≈ ${minutes(session.estimatedSec)}`}
-            sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'inherit' }}
+            size="small" variant="outlined" label={`≈ ${minutes(session.estimatedSec)}`}
+            sx={{ color: 'inherit', borderColor: 'currentColor' }}
           />
           {session.isDeload && (
-            <Chip size="small" label="Deload" sx={{ bgcolor: 'rgba(255,255,255,0.18)', color: 'inherit' }} />
+            <Chip
+              size="small" variant="outlined" label="Deload"
+              sx={{ color: 'inherit', borderColor: 'currentColor' }}
+            />
           )}
         </Stack>
         <Button

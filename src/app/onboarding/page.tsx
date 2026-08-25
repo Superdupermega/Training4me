@@ -9,6 +9,6 @@ export default async function OnboardingPage({
 }: { searchParams: Promise<{ edit?: string }> }) {
   const { edit } = await searchParams;
   const profile = await getProfile();
-  if (profile.onboardedAt && !edit) redirect('/plan');
+  if (profile.onboardedAt && !edit) redirect('/today');
   return <OnboardingWizard bodyweightKg={profile.bodyweightKg} />;
 }

@@ -1,67 +1,42 @@
-'use client';
-import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
-import HistoryIcon from '@mui/icons-material/History';
-import SettingsIcon from '@mui/icons-material/Settings';
-import BottomNavigation from '@mui/material/BottomNavigation';
-import BottomNavigationAction from '@mui/material/BottomNavigationAction';
 import Box from '@mui/material/Box';
-import Paper from '@mui/material/Paper';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { useEffect, useState, type ReactNode } from 'react';
+import type { ReactNode } from 'react';
+import { BottomNav } from './nav/BottomNav';
+import { NavRail, RAIL_WIDTH } from './nav/NavRail';
+import { TopBar } from './nav/TopBar';
 
-const TABS = [
-  { label: 'Plan', value: '/plan', icon: <CalendarMonthIcon /> },
-  { label: 'History', value: '/history', icon: <HistoryIcon /> },
-  { label: 'Settings', value: '/settings', icon: <SettingsIcon /> },
-];
+interface Props {
+  children: ReactNode;
+  title?: string;
+  action?: ReactNode;
+  /** For a sub-page reached from a destination (e.g. /profile/settings). */
+  backHref?: string;
+}
 
-export function AppShell({ children }: { children: ReactNode }) {
-  const pathname = usePathname();
-  const fromPath = TABS.find((t) => pathname.startsWith(t.value))?.value ?? false;
-
-  // The tap must highlight before the navigation commits, or the bottom bar
-  // reads as broken — the exact "unresponsive menu" complaint this fixes.
-  // `pending` is set synchronously on click, so the pressed tab lights up on
-  // the same frame; once the real route lands, `pathname` changes and the
-  // effect below clears it, so the derived `fromPath` takes back over with no
-  // visible handoff.
-  const [pending, setPending] = useState<string | false>(false);
-  useEffect(() => setPending(false), [pathname]);
-  const current = pending || fromPath;
-
+/**
+ * The five-destination shell: BottomNavigation on mobile, a navigation rail
+ * on desktop (≥ 900px), same routes either way. Both are always rendered and
+ * switched with CSS `display`, never branched in JS, so there is no
+ * hydration flash on first paint (docs/06-REDESIGN-PLAN.md §4/chunk 15).
+ *
+ * Content width is each page's own call via `<PageContainer>` — this shell
+ * only owns the nav chrome and the safe-area padding around it.
+ */
+export function AppShell({ children, title, action, backHref }: Props) {
   return (
-    <Box sx={{ minHeight: '100dvh', pb: 'calc(72px + env(safe-area-inset-bottom))' }}>
-      <Box sx={{ maxWidth: 680, mx: 'auto', px: 2, pt: 2 }}>{children}</Box>
-      <Paper
-        component="nav"
-        elevation={0}
-        sx={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 10,
-          borderTop: 1, borderColor: 'divider',
-          pb: 'env(safe-area-inset-bottom)', bgcolor: 'background.paper',
-        }}
-      >
-        <BottomNavigation
-          value={current}
-          onChange={(_, value) => setPending(value)}
-          sx={{ maxWidth: 680, mx: 'auto', bgcolor: 'transparent' }}
+    <Box sx={{ minHeight: '100dvh', display: 'flex' }}>
+      <NavRail />
+      <Box sx={{ flex: 1, minWidth: 0, ml: { xs: 0, md: `${RAIL_WIDTH}px` } }}>
+        {title && <TopBar title={title} action={action} backHref={backHref} />}
+        <Box
+          sx={{
+            px: 2, pt: 2,
+            pb: { xs: 'calc(72px + env(safe-area-inset-bottom))', md: 4 },
+          }}
         >
-          {TABS.map((tab) => (
-            <BottomNavigationAction
-              key={tab.value}
-              label={tab.label}
-              value={tab.value}
-              icon={tab.icon}
-              // A real <Link>, not router.push in the handler above — this is
-              // what gives Next's viewport prefetch, so the destination's
-              // payload is usually already on the device before the tap lands.
-              component={Link}
-              href={tab.value}
-            />
-          ))}
-        </BottomNavigation>
-      </Paper>
+          {children}
+        </Box>
+      </Box>
+      <BottomNav />
     </Box>
   );
 }

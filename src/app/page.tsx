@@ -18,7 +18,7 @@ export default async function Home() {
     // else. Render the diagnosis instead.
     return <SetupNeeded message={err instanceof Error ? err.message : String(err)} />;
   }
-  redirect(profile.onboardedAt ? '/plan' : '/onboarding');
+  redirect(profile.onboardedAt ? '/today' : '/onboarding');
 }
 
 function SetupNeeded({ message }: { message: string }) {

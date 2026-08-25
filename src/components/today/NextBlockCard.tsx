@@ -12,7 +12,7 @@ export function NextBlockCard() {
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Card sx={{ p: 2.5, bgcolor: 'primary.main', color: 'primary.contrastText' }}>
+    <Card sx={{ p: 2.5, bgcolor: 'primaryContainer.main', color: 'primaryContainer.contrastText' }}>
       <Stack spacing={1.5}>
         <Typography variant="h1">Block finished</Typography>
         <Typography sx={{ opacity: 0.9 }}>

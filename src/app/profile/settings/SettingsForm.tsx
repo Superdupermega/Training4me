@@ -12,6 +12,7 @@ import Stack from '@mui/material/Stack';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
+import { useColorScheme } from '@mui/material/styles';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { getExercise } from '@/core/library/exercises';
@@ -19,10 +20,13 @@ import { describeSkeleton } from '@/core/generator/split';
 import { regenerateProgram, updateSettings } from '@/server/actions';
 import type { Profile } from '@/server/repo';
 
+const THEME_LABEL = { system: 'System', light: 'Light', dark: 'Dark' } as const;
+
 export function SettingsForm({
   profile, trainingMaxes,
 }: { profile: Profile; trainingMaxes: Record<string, number> }) {
   const router = useRouter();
+  const { mode, setMode } = useColorScheme();
   const [days, setDays] = useState(profile.daysPerWeek ?? 3);
   const [cap, setCap] = useState(Math.round(profile.sessionCapSec / 60));
   const [weeks, setWeeks] = useState(profile.mesocycleWeeks);
@@ -51,6 +55,18 @@ export function SettingsForm({
 
   return (
     <Stack spacing={2}>
+      <Card variant="outlined" sx={{ p: 2 }}>
+        <Typography variant="overline" color="text.secondary">Appearance</Typography>
+        <ToggleButtonGroup
+          exclusive fullWidth value={mode ?? 'system'} sx={{ mt: 1 }}
+          onChange={(_, value) => value && setMode(value)}
+        >
+          {(['system', 'light', 'dark'] as const).map((m) => (
+            <ToggleButton key={m} value={m}>{THEME_LABEL[m]}</ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Card>
+
       <Card variant="outlined" sx={{ p: 2 }}>
         <Typography variant="overline" color="text.secondary">Training days per week</Typography>
         <ToggleButtonGroup

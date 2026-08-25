@@ -112,7 +112,7 @@ export function OnboardingWizard({ bodyweightKg }: { bodyweightKg: number }) {
       trainingMaxes: maxes,
     });
     setPending(false);
-    if (result.ok) router.replace('/plan');
+    if (result.ok) router.replace('/today');
     else setError(result.error);
   }
 

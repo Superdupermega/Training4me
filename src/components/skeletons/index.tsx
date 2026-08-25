@@ -62,9 +62,11 @@ export function PlanSkeleton() {
 }
 
 export function HistorySkeleton() {
+  // Two direct children, no wrapping Stack — the real page's two <Box>
+  // sections become individual items in PageContainer's wide grid, and the
+  // skeleton needs the same shape or it won't match on desktop.
   return (
-    <Stack spacing={3}>
-      <Skeleton variant="text" width="30%" height={36} />
+    <>
       <Box>
         <Skeleton variant="text" width="35%" height={18} />
         <Card variant="outlined" sx={{ mt: 1 }}>
@@ -81,15 +83,14 @@ export function HistorySkeleton() {
           ))}
         </Card>
       </Box>
-    </Stack>
+    </>
   );
 }
 
 export function SettingsSkeleton() {
   return (
     <Stack spacing={2}>
-      <Skeleton variant="text" width="30%" height={36} />
-      {Array.from({ length: 4 }).map((_, i) => (
+      {Array.from({ length: 6 }).map((_, i) => (
         <Card key={i} variant="outlined" sx={{ p: 2 }}>
           <Skeleton variant="text" width="40%" height={18} />
           <Skeleton variant="rounded" height={44} sx={{ mt: 1, borderRadius: 999 }} />
@@ -101,18 +102,25 @@ export function SettingsSkeleton() {
 
 export function SessionSkeleton() {
   return (
-    <Box sx={{ maxWidth: 680, mx: 'auto', px: 2, pt: 2, pb: 12 }}>
-      <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', mb: 0.5 }}>
-        <Skeleton variant="text" width="55%" height={40} sx={{ flex: 1 }} />
-        <Skeleton variant="text" width={50} height={30} />
+    <Box sx={{ minHeight: '100dvh', pb: 12 }}>
+      {/* Shaped like the player's own TopBar: back arrow + title + clock. */}
+      <Stack
+        direction="row" spacing={1.5}
+        sx={{ alignItems: 'center', px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider' }}
+      >
+        <Skeleton variant="circular" width={24} height={24} />
+        <Skeleton variant="text" width="45%" height={28} sx={{ flex: 1 }} />
+        <Skeleton variant="text" width={50} height={28} />
       </Stack>
-      <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
-        <Skeleton variant="rounded" width={90} height={24} sx={{ borderRadius: 999 }} />
-        <Skeleton variant="rounded" width={70} height={24} sx={{ borderRadius: 999 }} />
-      </Stack>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <Skeleton key={i} variant="rounded" height={64} sx={{ mb: 1.5, borderRadius: 3 }} />
-      ))}
+      <Box sx={{ maxWidth: 680, mx: 'auto', px: 2, pt: 2 }}>
+        <Stack direction="row" spacing={1} sx={{ mb: 2 }}>
+          <Skeleton variant="rounded" width={90} height={24} sx={{ borderRadius: 999 }} />
+          <Skeleton variant="rounded" width={70} height={24} sx={{ borderRadius: 999 }} />
+        </Stack>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} variant="rounded" height={64} sx={{ mb: 1.5, borderRadius: 3 }} />
+        ))}
+      </Box>
     </Box>
   );
 }

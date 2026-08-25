@@ -125,3 +125,82 @@ five-destination shell — reuse the click/pathname reconciliation approach.
 
 **Blocked:** nothing. `pnpm test` (213/213), `pnpm lint`, `pnpm typecheck`,
 `pnpm build` all clean.
+
+## Chunk 15 — Navigation & responsive Material 3 shell — 2026-08-25
+**Landed:** The five-destination IA from `06-REDESIGN-PLAN.md` §4, replacing
+the old three-tab shell.
+
+- New routes: `/today` (the old `/plan` hero — today's/next session, week
+  strip, this week's list), `/program` (the whole active block, every week,
+  plus a "Build my own program" entry point), `/program/builder` (full-screen
+  stub for chunk 18), `/exercises` (stub for chunks 16–17), `/profile`
+  (profile summary, training maxes, recent PRs, a link into Settings, and an
+  honest "full analysis is coming" card for chunk 20).
+  `/settings` moved to `/profile/settings`.
+- `src/components/plan/` renamed `src/components/today/` (`TodayCard`,
+  `NextBlockCard`, `WeekStrip`, `SessionRow`) — no behaviour change, just
+  living where the new IA actually uses it.
+- `next.config.ts` permanently redirects `/plan → /program` and
+  `/settings → /profile/settings`; root `/` and onboarding now land on
+  `/today`. Every remaining hardcoded reference to the old routes (root
+  redirect, onboarding wizard, session player's "back" and post-finish
+  navigation, `goToPlan`, the PWA manifest's `start_url`) updated to match.
+- `AppShell` rewritten: `NavRail` (hand-built M3 rail — MUI ships no packaged
+  one — pill active indicator, 88px, fixed left) and `BottomNav` are both
+  always rendered and switched with CSS `display`, not branched in JS, so
+  there's no hydration flash. Both share `useActiveDestination`, which
+  generalises chunk 14's prefetch/optimistic-highlight fix (real `next/link`s,
+  synchronous local "pending" state that reconciles against the real pathname
+  once navigation lands) across five destinations instead of three.
+- `PageContainer` (`src/components/PageContainer.tsx`): `narrow` (720px, the
+  default) or `wide` (1200px, auto-grid by default) — `/program`, `/history`,
+  `/profile` now use the screen on desktop instead of sitting in a
+  phone-width column; `grid={false}` opts a wide page into its own layout
+  when the default auto-fill grid doesn't fit its content (used by `/program`
+  and `/profile`, both of which need a full-width header above a grid).
+- `TopBar` (`src/components/nav/TopBar.tsx`): sticky, optional back arrow for
+  full-screen routes (`/program/builder`, `/session/[id]`) and an action slot.
+  The session player now uses it — back arrow to `/today`, title, and the
+  elapsed-time clock moved into the action slot — replacing its own inline
+  header row.
+- Theme: added real M3 `PaletteColor` groups via module augmentation —
+  `primaryContainer`, `secondaryContainer`, `tertiary`/`tertiaryContainer`,
+  `surfaceContainerLow`/`surfaceContainer`/`surfaceContainerHigh` — and
+  deleted the old `CONTAINER` plain-object export (nothing else used it).
+  `outlineVariant` deliberately not added: MUI's own `divider` already carries
+  that exact role at the same values. `TodayCard`/`NextBlockCard` moved off
+  `primary.main` + hardcoded `rgba(255,255,255,0.18)` chips onto
+  `primaryContainer` + outlined chips with `color: 'inherit'`, which is
+  correct in both schemes instead of only happening to work in one. Added a
+  three-way (system/light/dark) theme toggle in Settings via MUI's
+  `useColorScheme`. `MuiListItemButton`/`MuiCardActionArea` now default to a
+  48px minimum height.
+- All `loading.tsx` skeletons updated to match: removed page-title skeleton
+  rows now that the title lives in `TopBar` (kept where the real page has its
+  own *additional*, dynamic heading below the static TopBar title — `/today`
+  and `/program` both do); `HistorySkeleton` now returns two bare `<Box>`
+  siblings instead of a wrapping `Stack`, matching the shape `PageContainer`'s
+  grid expects; `SessionSkeleton` now shapes a TopBar bar instead of an inline
+  title+timer row.
+
+**First-load JS, from `next build`:** `/` 146 kB · `/exercises` 153 kB ·
+`/history` 157 kB · `/program` 160 kB · `/program/builder` 152 kB ·
+`/profile` 158 kB · `/profile/settings` 186 kB · `/today` 163 kB ·
+`/session/[id]` 214 kB. Roughly flat versus chunk 14's baseline despite two
+new nav components rendering on every page — the shared chunk absorbed it.
+
+**Verified live** (dev server, this sandbox's network allowlist blocks
+Supabase so only routing/rendering could be checked, not real data): all nine
+routes return 200; `/plan` and `/settings` return 308 to the right
+destination; `/exercises` and `/program/builder` (no DB calls) render their
+real content; all five nav labels present in the markup on every page.
+
+**Next chunk must know:** `PageContainer`, `TopBar`, `AppShell`'s
+`title`/`action`/`backHref` props, and the `primaryContainer`/`tertiary`/
+`surfaceContainer*` theme tokens are all now the standing conventions —
+chunks 16–21 should reach for these rather than inventing page chrome again.
+`/exercises` and `/program/builder` are real routes with real stub content;
+chunks 17 and 18 replace the stub body, not the route or its nav entry.
+
+**Blocked:** nothing. `pnpm test` (213/213), `pnpm lint`, `pnpm typecheck`,
+`pnpm build` all clean.

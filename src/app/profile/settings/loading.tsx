@@ -1,12 +1,12 @@
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
-import { HistorySkeleton } from '@/components/skeletons';
+import { SettingsSkeleton } from '@/components/skeletons';
 
 export default function Loading() {
   return (
-    <AppShell title="History">
-      <PageContainer width="wide">
-        <HistorySkeleton />
+    <AppShell title="Settings" backHref="/profile">
+      <PageContainer>
+        <SettingsSkeleton />
       </PageContainer>
     </AppShell>
   );
