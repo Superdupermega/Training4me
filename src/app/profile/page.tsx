@@ -3,6 +3,7 @@ import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
 import CardActionArea from '@mui/material/CardActionArea';
 import Chip from '@mui/material/Chip';
+import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Link from 'next/link';
@@ -54,6 +55,18 @@ export default async function ProfilePage() {
                   <Typography variant="h3">Settings</Typography>
                   <Typography variant="body2" color="text.secondary">
                     Training days, session length, block length, appearance
+                  </Typography>
+                </Box>
+                <ChevronRightIcon color="disabled" />
+              </Stack>
+            </CardActionArea>
+            <Divider />
+            <CardActionArea component={Link} href="/profile/export" sx={{ p: 2 }}>
+              <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+                <Box sx={{ flex: 1 }}>
+                  <Typography variant="h3">Export your data</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Download every logged set as a CSV, or a full JSON backup
                   </Typography>
                 </Box>
                 <ChevronRightIcon color="disabled" />
