@@ -19,7 +19,10 @@ import { NewRoutineDialog } from './NewRoutineDialog';
 
 export function RoutineList({ routines }: { routines: RoutineListItem[] }) {
   const router = useRouter();
-  const [creating, setCreating] = useState(false);
+  // Nothing built yet means this page has nothing else to show anyway — go
+  // straight to the creation dialog instead of making a first-time builder
+  // tap through an empty list to find the one button that does anything.
+  const [creating, setCreating] = useState(routines.length === 0);
   const [items, setItems] = useState(routines);
   const [toDelete, setToDelete] = useState<RoutineListItem | null>(null);
   const [pending, setPending] = useState(false);

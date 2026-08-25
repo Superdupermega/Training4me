@@ -54,8 +54,9 @@ function summarise(item: EditableItem): string {
   const target = item.targetKind === 'percent_tm' && item.percentTm ? `@ ${item.percentTm}% TM`
     : item.targetKind === 'rpe' && item.rpe ? `@ RPE ${item.rpe}`
       : item.targetKind === 'weight' && item.weightKg ? `@ ${item.weightKg} kg`
-        : item.targetKind === 'duration' && item.durationSec ? `${Math.round(item.durationSec / 60)} min`
-          : item.targetKind === 'distance' && item.distanceM ? `${item.distanceM} m` : '';
+        : item.targetKind === 'bodyweight' && item.weightKg ? `@ BW + ${item.weightKg} kg`
+          : item.targetKind === 'duration' && item.durationSec ? `${Math.round(item.durationSec / 60)} min`
+            : item.targetKind === 'distance' && item.distanceM ? `${item.distanceM} m` : '';
   return [`${item.sets} × ${reps}${item.perSide ? '/side' : ''}`, target].filter(Boolean).join(' ');
 }
 

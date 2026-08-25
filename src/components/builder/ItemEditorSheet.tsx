@@ -12,6 +12,8 @@ import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
+import useMediaQuery from '@mui/material/useMediaQuery';
+import { useTheme } from '@mui/material/styles';
 import { useEffect, useState } from 'react';
 import { ExerciseContextPanel } from '@/components/exercises/ExerciseContext';
 import { getExercise } from '@/core/library/exercises';
@@ -48,6 +50,12 @@ function tempoHint(tempo: string): string {
 }
 
 export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
+  const theme = useTheme();
+  // Below ~600px a centered `xs`-width dialog leaves so little horizontal
+  // room that the Sets/Reps row (three TextFields side by side) squeezes
+  // each field's label past legibility — "Sets" was clipping off entirely.
+  // Full-screen on a phone gives every field its own real width instead.
+  const fullScreen = useMediaQuery(theme.breakpoints.down('sm'));
   const [draft, setDraft] = useState<EditableItem | null>(item);
   const [context, setContext] = useState<ExerciseContext | undefined>(undefined);
   useEffect(() => setDraft(item), [item]);
@@ -69,7 +77,7 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
   const set = (patch: Partial<EditableItem>) => setDraft((prev) => (prev ? { ...prev, ...patch } : prev));
 
   return (
-    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs" fullScreen={fullScreen}>
       <DialogTitle>{exercise.name}</DialogTitle>
       <DialogContent>
         <Stack spacing={2.5} sx={{ pt: 1 }}>
@@ -83,19 +91,22 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
             ))}
           </TextField>
 
-          <Stack direction="row" spacing={2}>
+          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 2.5 }}>
             <TextField
               label="Sets" type="number" size="small" value={draft.sets}
               onChange={(e) => set({ sets: Math.max(1, Number(e.target.value) || 1) })}
               slotProps={{ htmlInput: { min: 1, max: 20 } }}
+              sx={{ flex: '1 1 84px', minWidth: 84 }}
             />
             <TextField
               label="Reps low" type="number" size="small" value={draft.repLo ?? ''}
               onChange={(e) => set({ repLo: e.target.value ? Number(e.target.value) : null })}
+              sx={{ flex: '1 1 84px', minWidth: 84 }}
             />
             <TextField
               label="Reps high" type="number" size="small" value={draft.repHi ?? ''}
               onChange={(e) => set({ repHi: e.target.value ? Number(e.target.value) : null })}
+              sx={{ flex: '1 1 84px', minWidth: 84 }}
             />
           </Stack>
 
@@ -104,15 +115,17 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
             label="Reps are per side"
           />
 
-          <Stack direction="row" spacing={2}>
+          <Stack direction="row" spacing={2} sx={{ flexWrap: 'wrap', rowGap: 2.5 }}>
             <TextField
               label="Tempo" size="small" value={draft.tempo}
               onChange={(e) => set({ tempo: e.target.value.toUpperCase().slice(0, 4) })}
               slotProps={{ htmlInput: { maxLength: 4 } }}
+              sx={{ flex: '1 1 120px', minWidth: 120 }}
             />
             <TextField
               label="Rest (sec)" type="number" size="small" value={draft.restSec}
               onChange={(e) => set({ restSec: Math.max(0, Number(e.target.value) || 0) })}
+              sx={{ flex: '1 1 120px', minWidth: 120 }}
             />
           </Stack>
           <Typography variant="caption" color="text.secondary">{tempoHint(draft.tempo)}</Typography>
@@ -148,6 +161,13 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
             <TextField
               label="Weight (kg)" type="number" size="small" value={draft.weightKg ?? ''}
               onChange={(e) => set({ weightKg: e.target.value ? Number(e.target.value) : null })}
+            />
+          )}
+          {draft.targetKind === 'bodyweight' && (
+            <TextField
+              label="Added weight (kg)" type="number" size="small" value={draft.weightKg ?? ''}
+              onChange={(e) => set({ weightKg: e.target.value ? Number(e.target.value) : null })}
+              helperText="Optional — a vest, belt or dumbbell held between the feet. Leave blank for bodyweight only."
             />
           )}
           {draft.targetKind === 'duration' && (

@@ -202,9 +202,16 @@ src/components/  UI, including the session player, the nav shell, and the routin
 src/app/         routes: /onboarding /today /program /program/builder /exercises
                   /history /profile /profile/settings /profile/export /session/[id]
 docs/            the original build plan, the methodology spec, the redesign plan,
-                  and the production review (07) with its RLS-tightening (08) and
-                  push-notification (09) setup follow-ups
+                  the production review (07) with its RLS-tightening (08) and
+                  push-notification (09) setup follow-ups, and the profile &
+                  settings rework plan (10)
 ```
 
 `docs/01-METHODOLOGY.md` is the written spec the code implements. Where the code
 and that document have diverged, `docs/DECISIONS.md` records why.
+
+## For AI agents
+
+Read `AGENTS.md` before starting — a personal, single-maintainer project with
+no PR workflow, so the working convention (push straight to `main` once
+validated) lives there rather than in this README.

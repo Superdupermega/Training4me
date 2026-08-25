@@ -43,7 +43,9 @@ function materializeSet(item: RoutineItem, setNumber: number): PrescribedSet {
     case 'distance':
       return { ...base, distanceM: item.distanceM ?? undefined };
     case 'bodyweight':
-      return { ...base, reps: item.repLo ?? item.repHi ?? 8, perSide: item.perSide };
+      // weightKg here is *added* load on top of bodyweight (a vest, a belt)
+      // — optional, so undefined/0 both mean "bodyweight only".
+      return { ...base, reps: item.repLo ?? item.repHi ?? 8, perSide: item.perSide, weightKg: item.weightKg ?? undefined };
     case 'weight':
       return { ...base, reps: item.repLo ?? item.repHi ?? 8, perSide: item.perSide, weightKg: item.weightKg ?? undefined };
     case 'rpe':
