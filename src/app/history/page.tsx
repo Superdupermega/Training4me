@@ -1,9 +1,11 @@
 import Box from '@mui/material/Box';
 import Card from '@mui/material/Card';
+import CardActionArea from '@mui/material/CardActionArea';
 import Chip from '@mui/material/Chip';
 import Divider from '@mui/material/Divider';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
 import { WEEKDAY } from '@/components/format';
@@ -65,18 +67,20 @@ export default async function HistoryPage() {
                   : null;
                 return (
                   <Box key={session.id}>
-                    <Stack direction="row" spacing={2} sx={{ alignItems: 'center', p: 2 }}>
-                      <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="h3" noWrap>{session.title}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {WEEKDAY[session.weekday]} {session.scheduledDate}
-                          {session.actualSec ? ` · ${Math.round(session.actualSec / 60)} min` : ''}
-                        </Typography>
-                      </Box>
-                      {session.status === 'skipped'
-                        ? <Chip size="small" label="Skipped" />
-                        : readiness && <Chip size="small" variant="outlined" label={`Readiness ${readiness.score}`} />}
-                    </Stack>
+                    <CardActionArea component={Link} href={`/session/${session.id}`} sx={{ p: 2 }}>
+                      <Stack direction="row" spacing={2} sx={{ alignItems: 'center' }}>
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography variant="h3" noWrap>{session.title}</Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            {WEEKDAY[session.weekday]} {session.scheduledDate}
+                            {session.actualSec ? ` · ${Math.round(session.actualSec / 60)} min` : ''}
+                          </Typography>
+                        </Box>
+                        {session.status === 'skipped'
+                          ? <Chip size="small" label="Skipped" />
+                          : readiness && <Chip size="small" variant="outlined" label={`Readiness ${readiness.score}`} />}
+                      </Stack>
+                    </CardActionArea>
                     {i < sessions.length - 1 && <Divider />}
                   </Box>
                 );

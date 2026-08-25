@@ -346,6 +346,18 @@ export const listPRs = unstable_cache(
   { tags: [TAGS.logs] },
 );
 
+/** PRs set in one specific session — the session summary badges these against the set that won them. */
+export const listPRsForSession = unstable_cache(
+  async (sessionId: string): Promise<Pr[]> => {
+    const { data, error } = await db()
+      .from('t4m_pr').select('*').eq('session_id', sessionId);
+    if (error) throw new Error(error.message);
+    return (data ?? []) as Pr[];
+  },
+  ['t4m-list-prs-for-session'],
+  { tags: [TAGS.logs] },
+);
+
 export async function insertPRs(
   rows: { exerciseId: string; kind: string; value: number; reps?: number; weightKg?: number; sessionId: string }[],
 ) {
