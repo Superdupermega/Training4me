@@ -2,6 +2,7 @@
 import { revalidateTag } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import type { RoutineDay } from '@/core/builder/types';
 import { generateProgram } from '@/core/generator/generateProgram';
 import { PROFILE_EQUIPMENT } from '@/core/library/equipment';
 import { detectPRs } from '@/core/progression/prs';
@@ -10,6 +11,8 @@ import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea,
 import { COOKIE_MAX_AGE, COOKIE_NAME, deriveToken, safeEqual } from './lock';
 import * as repo from './repo';
 import { TAGS } from './repo';
+import * as routines from './routines';
+import { ROUTINE_TAG } from './routines';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -224,4 +227,108 @@ export async function startNextBlock(): Promise<Result> {
 
 export async function goToPlan(): Promise<never> {
   redirect('/today');
+}
+
+// ---------------------------------------------------------------- routine builder (chunk 18)
+
+export async function createRoutine(input: routines.CreateRoutineInput): Promise<Result<{ routineId: string }>> {
+  try {
+    const routineId = await routines.createRoutine(input);
+    revalidateTag(ROUTINE_TAG);
+    return { ok: true, data: { routineId } };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function renameRoutine(routineId: string, name: string): Promise<Result> {
+  try {
+    await routines.renameRoutine(routineId, name);
+    revalidateTag(ROUTINE_TAG);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function archiveRoutine(routineId: string): Promise<Result> {
+  try {
+    await routines.archiveRoutine(routineId);
+    revalidateTag(ROUTINE_TAG);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+export async function saveRoutineDays(routineId: string, days: RoutineDay[]): Promise<Result> {
+  try {
+    await routines.saveRoutineDays(routineId, days);
+    revalidateTag(ROUTINE_TAG);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Materialises the routine and makes it the active program (replaces any other active one). */
+export async function scheduleRoutine(routineId: string): Promise<Result<{ programId: string }>> {
+  try {
+    const [routine, profile, trainingMaxes] = await Promise.all([
+      routines.getRoutine(routineId), repo.getProfile(), repo.getTrainingMaxes(),
+    ]);
+    if (!routine) return { ok: false, error: 'Routine not found' };
+
+    const programId = await routines.scheduleRoutine(routine, {
+      startDate: new Date().toISOString().slice(0, 10),
+      trainingMaxes,
+      increment: profile.microPlates ? 1.25 : 2.5,
+      paceFactor: profile.paceFactor,
+    });
+    revalidateTag(TAGS.program);
+    revalidateTag(TAGS.sessions);
+    return { ok: true, data: { programId } };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/** Seeds a new routine from the currently active generated program's week one — the fast path most people will actually use. */
+export async function duplicateActiveProgramAsRoutine(name: string): Promise<Result<{ routineId: string }>> {
+  try {
+    const program = await repo.getActiveProgram();
+    if (!program) return { ok: false, error: 'No active program to duplicate' };
+    const sessions = await repo.listSessions(program.id);
+    const week1 = sessions.filter((s) => s.weekNumber === 1);
+    if (week1.length === 0) return { ok: false, error: 'Active program has no sessions yet' };
+
+    const routineId = await routines.createRoutine({
+      name, weeks: program.weeks, daysPerWeek: program.daysPerWeek,
+    });
+    const days: RoutineDay[] = week1.map((session, i) => ({
+      id: '', dayIndex: i + 1, name: session.title, weekday: session.weekday, notes: null,
+      items: session.blocks.flatMap((block) =>
+        block.exercises.map((be, itemIndex) => {
+          const firstSet = be.sets.find((s) => s.kind !== 'ramp') ?? be.sets[0];
+          return {
+            id: '', position: itemIndex, blockLetter: block.letter, blockKind: block.kind,
+            supersetGroup: block.exercises.length > 1 ? block.letter : null,
+            exerciseId: be.exerciseId,
+            sets: (block.rounds && block.rounds > 1) ? block.rounds : be.sets.filter((s) => s.kind !== 'ramp').length,
+            repLo: firstSet?.reps ?? null, repHi: firstSet?.reps ?? null,
+            tempo: be.tempo, restSec: firstSet?.restSec ?? 90,
+            targetKind: firstSet?.percentTm ? ('percent_tm' as const) : ('rpe' as const),
+            percentTm: firstSet?.percentTm ? firstSet.percentTm * 100 : null,
+            rpe: firstSet?.rpe ?? null, weightKg: null, durationSec: firstSet?.durationSec ?? null,
+            distanceM: firstSet?.distanceM ?? null, perSide: firstSet?.perSide ?? false, notes: null,
+          };
+        }),
+      ),
+    }));
+    await routines.saveRoutineDays(routineId, days);
+    revalidateTag(ROUTINE_TAG);
+    return { ok: true, data: { routineId } };
+  } catch (err) {
+    return fail(err);
+  }
 }

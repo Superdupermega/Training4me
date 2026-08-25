@@ -40,6 +40,17 @@ export const ARCHETYPES = [
 ] as const;
 export type SessionArchetype = (typeof ARCHETYPES)[number];
 
+/**
+ * `PlannedSession.archetype` accepts one more value than the generator's own
+ * `SessionArchetype` union: `'CUSTOM'`, for a day materialised from a
+ * user-built routine (chunk 18) rather than one of the generator's fixed
+ * weekly skeletons. Kept as a separate type — not folded into `ARCHETYPES`
+ * itself — so the generator's `Record<SessionArchetype, …>` lookup tables
+ * (assembleSession.ts) stay exhaustively checked over exactly the values the
+ * generator can actually produce; they never see `'CUSTOM'`.
+ */
+export type Archetype = SessionArchetype | 'CUSTOM';
+
 export const BLOCK_KINDS = [
   'primer', 'main', 'secondary', 'superset', 'finisher', 'downregulate',
 ] as const;
@@ -150,7 +161,7 @@ export interface PlannedSession {
   dayNumber: number;
   weekday: number; // 1 = Monday
   date: string; // ISO yyyy-mm-dd
-  archetype: SessionArchetype;
+  archetype: Archetype;
   title: string;
   mainPattern: MovementPattern | null;
   isDeload: boolean;

@@ -10,6 +10,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
+import { DuplicateAsRoutineButton } from '@/components/builder/DuplicateAsRoutineButton';
 import { SessionRow } from '@/components/today/SessionRow';
 import { getActiveProgram, getProfile, listSessions } from '@/server/repo';
 
@@ -63,9 +64,14 @@ export default async function ProgramPage() {
             </Stack>
           </Box>
 
-          <Button component={Link} href="/program/builder" variant="outlined" size="large">
-            Build my own program
-          </Button>
+          <Stack direction="row" spacing={1.5} sx={{ flexWrap: 'wrap' }}>
+            <Button component={Link} href="/program/builder" variant="outlined" size="large">
+              Build my own program
+            </Button>
+            {!(program.input as unknown as { routineId?: string } | null)?.routineId && (
+              <DuplicateAsRoutineButton programName={program.name} />
+            )}
+          </Stack>
 
           <Box
             sx={{

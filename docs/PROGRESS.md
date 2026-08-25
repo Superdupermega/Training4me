@@ -328,3 +328,97 @@ logic a third time. `historyForExercise`, `browseGroupsFor` and the
 `labels.ts` maps are all reusable as-is.
 
 **Blocked:** nothing.
+
+## Chunk 18 — Program builder — 2026-08-25
+**Landed:** the biggest single feature in the plan — a self-built program
+that trains in the exact same session player as a generated block, with no
+changes to the player at all.
+
+**Schema** (Supabase migration `t4m_routine_builder`, applied live): `t4m_routine`,
+`t4m_routine_day`, `t4m_routine_day`, `t4m_routine_item`, `t4m_custom_exercise`
+(unused this chunk — see Deviated), plus `favourite_exercises` on
+`t4m_profile` and `routine_id`/`routine_day_id` FKs on `t4m_session`/
+`t4m_program`. Every new table: RLS enabled, one `for all to anon,
+authenticated using (true)` policy — the same pattern every existing `t4m_`
+table already carries.
+
+**Core** (`src/core/builder/`, pure, tested, zero React/DB):
+- `types.ts` — `Routine`/`RoutineDay`/`RoutineItem` mirroring the schema.
+- `materializeRoutine.ts` — the second producer of `SessionBlock[]`. Groups
+  items by block letter into blocks (2+ items sharing a letter → one
+  superset block, `rounds = max(sets)`, slots `D1`/`D2`/…); `percent_tm`
+  resolves through the *existing* `resolveTrainingMax`/`roundToIncrement`
+  and falls back to RPE (never a fabricated weight) exactly like the
+  generator's own `prescriptionFor`; every set's `estimatedSec` comes from
+  `recost` — the generator's own cost model, called directly, not
+  reimplemented. No trimming: the athlete's plan runs however long it runs.
+  Week-identical repetition across weeks (see Deviated).
+- `advise.ts` — the read-only half of `validateWeek('full')`, reused as-is
+  against a permissive library context. Warns, never blocks, never repairs.
+- Two test files, 10 tests: one-day/three-item → three blocks; a shared
+  block letter → one superset with correct rounds and `D1`/`D2` slots;
+  `percent_tm` resolves against a known TM and falls back to RPE with no TM
+  on file; estimated seconds agree with the generator's own `estimateSet`
+  within 5%; never trims; week-identical repetition; dates advance by 7
+  days per week; advisories never mutate the plan they're checking.
+
+**Server** (`src/server/routines.ts`, new — mirrors `repo.ts`'s
+read/write-only discipline, no `revalidateTag` calls of its own):
+`listRoutines`/`getRoutine` (cached, tagged `routines`), `createRoutine`
+(routine + one empty day per `daysPerWeek`), `renameRoutine`,
+`archiveRoutine`, `saveRoutineDays` (replace-all — delete every day,
+re-insert, same trade-off `persistProgram` already makes for the
+generator's output), `scheduleRoutine` (materialise + make active,
+identical contract to `buildProgram`/`persistProgram`). Six new actions in
+`actions.ts`, each calling `revalidateTag` for what it touched, plus
+`duplicateActiveProgramAsRoutine` — reads the active generated program's
+week one and seeds a real editable routine from it, the fast path most
+people will actually use.
+
+**UI:**
+- `/program/builder` — routine list + a create dialog (name, weeks,
+  days/week).
+- `/program/builder/[id]` — the editor. Day tabs; each day is an ordered
+  list of block cards (a card with 2+ rows is a superset); add an exercise
+  via `ExercisePickerDialog` (search + muscle-group chips, reusing chunk
+  17's filtering logic rather than a second implementation); reorder by
+  block via up/down arrows (see Deviated — no drag-and-drop); "superset
+  with another exercise" merges a block, a split icon un-merges one item
+  back out; tapping a row opens `ItemEditorSheet` (sets, rep range,
+  per-side, tempo with a plain-English explainer, rest, target kind, and
+  the resolved RPE/percent-TM fields) built from `src/core/tempo.ts`'s
+  own format. A live duration chip and advisory `Alert` recompute on every
+  edit by calling `materializeRoutine`/`adviseOnWeek` directly in the
+  browser — both are pure `src/core` functions, so there is no server
+  round trip for the estimate at all.
+- `/program` gained "Build my own program" and, for a generated active
+  block, "Edit this block as my own program" (calls
+  `duplicateActiveProgramAsRoutine`).
+- `src/components/builder/editable.ts` — the client-editing↔domain-model
+  conversion (`fromRoutine`/`toRoutineDays`), covered by 5 of its own
+  round-trip tests, since it's the part most likely to have a subtle bug
+  (block relettering on reorder, superset detection from group size).
+
+**Verified:** 236 tests (231 → +5), lint, typecheck, build all clean.
+`/program/builder` compiles and routes correctly against a dev server
+(same sandbox network limitation as every earlier chunk — the live
+Supabase-backed create/save/schedule flow could not be exercised here).
+
+**Deviated:** three, all in `DECISIONS.md` — up/down-arrow reordering only
+(no drag-and-drop dependency), week-identical prescriptions (no progression
+scheme — both explicitly allowed by the plan's own fallback clauses), and a
+flatter single-editor-page UI instead of three separate full-screen steps.
+Custom exercises (`t4m_custom_exercise`) migrated but not wired up — chunk
+17 already deferred this to "next to the builder that needs it"; it turned
+out not to be needed for a first working builder (every movement in the
+286-strong library was enough for testing), so it stays backlogged rather
+than built speculatively.
+
+**Next chunk must know:** the routine builder's exercise picker and item
+editor are the natural home for chunk 19's "last time / expected" panel —
+`ItemEditorSheet` already has the exact spot (next to the RPE fallback
+field) the plan calls for. `adviseOnWeek`/`materializeRoutine` being pure
+and callable client-side is a pattern chunk 20 can reuse for any other
+core-logic-driven live preview.
+
+**Blocked:** nothing.

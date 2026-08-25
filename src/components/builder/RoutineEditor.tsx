@@ -1,0 +1,281 @@
+'use client';
+import AddIcon from '@mui/icons-material/Add';
+import CallSplitIcon from '@mui/icons-material/CallSplit';
+import DeleteIcon from '@mui/icons-material/Delete';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import KeyboardArrowUpIcon from '@mui/icons-material/KeyboardArrowUp';
+import LinkIcon from '@mui/icons-material/Link';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
+import Card from '@mui/material/Card';
+import Chip from '@mui/material/Chip';
+import IconButton from '@mui/material/IconButton';
+import Snackbar from '@mui/material/Snackbar';
+import Stack from '@mui/material/Stack';
+import Tab from '@mui/material/Tab';
+import Tabs from '@mui/material/Tabs';
+import Typography from '@mui/material/Typography';
+import { useRouter } from 'next/navigation';
+import { useMemo, useState } from 'react';
+import { minutes } from '@/components/format';
+import { ExercisePickerDialog } from '@/components/exercises/ExercisePickerDialog';
+import { adviseOnWeek } from '@/core/builder/advise';
+import { materializeRoutine } from '@/core/builder/materializeRoutine';
+import type { Routine } from '@/core/builder/types';
+import { getExercise } from '@/core/library/exercises';
+import type { Exercise } from '@/core/types';
+import { saveRoutineDays, scheduleRoutine } from '@/server/actions';
+import {
+  fromRoutine, newItem, toRoutineDays,
+  type EditableBlock, type EditableDay, type EditableItem,
+} from './editable';
+import { ItemEditorSheet } from './ItemEditorSheet';
+
+interface Props {
+  routine: Routine;
+  trainingMaxes: Record<string, number>;
+  increment: number;
+  paceFactor: number;
+}
+
+function summarise(item: EditableItem): string {
+  const reps = item.repLo && item.repHi && item.repLo !== item.repHi
+    ? `${item.repLo}–${item.repHi}` : item.repLo ?? item.repHi ?? '';
+  const target = item.targetKind === 'percent_tm' && item.percentTm ? `@ ${item.percentTm}% TM`
+    : item.targetKind === 'rpe' && item.rpe ? `@ RPE ${item.rpe}`
+      : item.targetKind === 'weight' && item.weightKg ? `@ ${item.weightKg} kg`
+        : item.targetKind === 'duration' && item.durationSec ? `${Math.round(item.durationSec / 60)} min`
+          : item.targetKind === 'distance' && item.distanceM ? `${item.distanceM} m` : '';
+  return [`${item.sets} × ${reps}${item.perSide ? '/side' : ''}`, target].filter(Boolean).join(' ');
+}
+
+export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }: Props) {
+  const router = useRouter();
+  const [days, setDays] = useState<EditableDay[]>(() => fromRoutine(routine));
+  const [dayTab, setDayTab] = useState(0);
+  const [pickerFor, setPickerFor] = useState<'new' | string | null>(null); // 'new' or a block clientId
+  const [editing, setEditing] = useState<EditableItem | null>(null);
+  const [pending, setPending] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const day = days[dayTab]!;
+
+  const setDay = (updater: (d: EditableDay) => EditableDay) => {
+    setDays((prev) => prev.map((d, i) => (i === dayTab ? updater(d) : d)));
+  };
+
+  // Pure src/core code — the estimate and advisories run instantly in the
+  // browser, no server round trip, using the exact same cost model
+  // (recost/estimateSet) and balance rules the generator itself runs.
+  const plan = useMemo(() => {
+    const draftRoutine: Routine = { ...routine, days: toRoutineDays(days) };
+    return materializeRoutine(draftRoutine, { startDate: '2026-01-05', trainingMaxes, increment, paceFactor });
+  }, [routine, days, trainingMaxes, increment, paceFactor]);
+
+  const estimatedSec = plan[0]?.sessions[dayTab]?.estimatedSec ?? 0;
+  const advisories = useMemo(
+    () => (plan[0] ? adviseOnWeek(plan[0], days.length) : []),
+    [plan, days.length],
+  );
+
+  function addBlock(exercise: Exercise) {
+    setDay((d) => ({ ...d, blocks: [...d.blocks, { clientId: `b${Date.now()}`, items: [newItem(exercise.id)] }] }));
+    setPickerFor(null);
+  }
+
+  function addToBlock(blockClientId: string, exercise: Exercise) {
+    setDay((d) => ({
+      ...d,
+      blocks: d.blocks.map((b) => (b.clientId === blockClientId ? { ...b, items: [...b.items, newItem(exercise.id)] } : b)),
+    }));
+    setPickerFor(null);
+  }
+
+  function removeItem(blockClientId: string, itemClientId: string) {
+    setDay((d) => ({
+      ...d,
+      blocks: d.blocks
+        .map((b) => (b.clientId === blockClientId ? { ...b, items: b.items.filter((i) => i.clientId !== itemClientId) } : b))
+        .filter((b) => b.items.length > 0),
+    }));
+  }
+
+  function splitOut(blockClientId: string, itemClientId: string) {
+    setDay((d) => {
+      const block = d.blocks.find((b) => b.clientId === blockClientId);
+      const item = block?.items.find((i) => i.clientId === itemClientId);
+      if (!block || !item || block.items.length < 2) return d;
+      return {
+        ...d,
+        blocks: d.blocks.flatMap((b) => {
+          if (b.clientId !== blockClientId) return [b];
+          const rest = b.items.filter((i) => i.clientId !== itemClientId);
+          return [{ ...b, items: rest }, { clientId: `b${Date.now()}`, items: [item] }];
+        }),
+      };
+    });
+  }
+
+  function moveBlock(index: number, delta: 1 | -1) {
+    setDay((d) => {
+      const next = [...d.blocks];
+      const target = index + delta;
+      if (target < 0 || target >= next.length) return d;
+      [next[index], next[target]] = [next[target]!, next[index]!];
+      return { ...d, blocks: next };
+    });
+  }
+
+  function updateItem(blockClientId: string, updated: EditableItem) {
+    setDay((d) => ({
+      ...d,
+      blocks: d.blocks.map((b) => (
+        b.clientId === blockClientId
+          ? { ...b, items: b.items.map((i) => (i.clientId === updated.clientId ? updated : i)) }
+          : b
+      )),
+    }));
+    setEditing(null);
+  }
+
+  async function handleSave(): Promise<boolean> {
+    setPending(true);
+    setError(null);
+    const result = await saveRoutineDays(routine.id, toRoutineDays(days));
+    setPending(false);
+    if (!result.ok) { setError(result.error); return false; }
+    return true;
+  }
+
+  async function handleSchedule() {
+    const saved = await handleSave();
+    if (!saved) return;
+    setPending(true);
+    const result = await scheduleRoutine(routine.id);
+    setPending(false);
+    if (result.ok) router.push('/today');
+    else setError(result.error);
+  }
+
+  return (
+    <Stack spacing={2}>
+      <Tabs value={dayTab} onChange={(_, v) => setDayTab(v)} variant="scrollable" scrollButtons="auto">
+        {days.map((d, i) => <Tab key={d.id} label={d.name} value={i} />)}
+      </Tabs>
+
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 1 }}>
+        <Chip size="small" label={`≈ ${minutes(estimatedSec)}`} className="tnum" />
+        <Chip size="small" variant="outlined" label={`${day.blocks.length} block${day.blocks.length === 1 ? '' : 's'}`} />
+      </Stack>
+
+      {advisories.length > 0 && (
+        <Alert severity="info" variant="outlined">
+          {advisories.map((v) => v.message).join(' · ')}
+        </Alert>
+      )}
+
+      <Stack spacing={1.5}>
+        {day.blocks.map((block, index) => (
+          <BlockCard
+            key={block.clientId}
+            block={block}
+            index={index}
+            isLast={index === day.blocks.length - 1}
+            onMove={(delta) => moveBlock(index, delta)}
+            onAddPartner={() => setPickerFor(block.clientId)}
+            onEdit={(item) => setEditing(item)}
+            onRemove={(itemClientId) => removeItem(block.clientId, itemClientId)}
+            onSplit={(itemClientId) => splitOut(block.clientId, itemClientId)}
+          />
+        ))}
+      </Stack>
+
+      <Button startIcon={<AddIcon />} variant="outlined" onClick={() => setPickerFor('new')}>
+        Add exercise
+      </Button>
+
+      {error && <Alert severity="error">{error}</Alert>}
+
+      <Stack direction="row" spacing={1.5} sx={{ pt: 1 }}>
+        <Button variant="outlined" fullWidth disabled={pending} onClick={async () => { if (await handleSave()) setToast('Saved.'); }}>
+          Save
+        </Button>
+        <Button fullWidth disabled={pending} onClick={handleSchedule}>
+          {pending ? 'Working…' : 'Save & start training this'}
+        </Button>
+      </Stack>
+
+      <ExercisePickerDialog
+        open={pickerFor !== null}
+        onClose={() => setPickerFor(null)}
+        onPick={(ex) => (pickerFor === 'new' ? addBlock(ex) : pickerFor && addToBlock(pickerFor, ex))}
+      />
+      <ItemEditorSheet
+        open={editing !== null}
+        item={editing}
+        onClose={() => setEditing(null)}
+        onSave={(updated) => {
+          const block = day.blocks.find((b) => b.items.some((i) => i.clientId === updated.clientId));
+          if (block) updateItem(block.clientId, updated);
+        }}
+      />
+      <Snackbar open={Boolean(toast)} autoHideDuration={3000} onClose={() => setToast(null)} message={toast ?? ''} />
+    </Stack>
+  );
+}
+
+function BlockCard({
+  block, index, isLast, onMove, onAddPartner, onEdit, onRemove, onSplit,
+}: {
+  block: EditableBlock;
+  index: number;
+  isLast: boolean;
+  onMove: (delta: 1 | -1) => void;
+  onAddPartner: () => void;
+  onEdit: (item: EditableItem) => void;
+  onRemove: (itemClientId: string) => void;
+  onSplit: (itemClientId: string) => void;
+}) {
+  const isSuperset = block.items.length > 1;
+  return (
+    <Card variant="outlined">
+      <Stack direction="row" spacing={1} sx={{ alignItems: 'center', px: 1.5, pt: 1 }}>
+        <Typography variant="overline" color="text.secondary" sx={{ flex: 1 }}>
+          {isSuperset ? 'Superset' : 'Block'}
+        </Typography>
+        <IconButton size="small" disabled={index === 0} onClick={() => onMove(-1)} aria-label="Move up">
+          <KeyboardArrowUpIcon fontSize="small" />
+        </IconButton>
+        <IconButton size="small" disabled={isLast} onClick={() => onMove(1)} aria-label="Move down">
+          <KeyboardArrowDownIcon fontSize="small" />
+        </IconButton>
+      </Stack>
+      <Stack divider={<Box sx={{ borderTop: 1, borderColor: 'divider' }} />}>
+        {block.items.map((item) => {
+          const exercise = getExercise(item.exerciseId);
+          return (
+            <Stack key={item.clientId} direction="row" spacing={1.5} sx={{ alignItems: 'center', px: 2, py: 1.25 }}>
+              <Box sx={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => onEdit(item)}>
+                <Typography variant="h3" noWrap>{exercise.name}</Typography>
+                <Typography variant="body2" color="text.secondary" className="tnum">{summarise(item)}</Typography>
+              </Box>
+              {isSuperset && (
+                <IconButton size="small" onClick={() => onSplit(item.clientId)} aria-label="Split out of superset">
+                  <CallSplitIcon fontSize="small" />
+                </IconButton>
+              )}
+              <IconButton size="small" onClick={() => onRemove(item.clientId)} aria-label="Remove exercise">
+                <DeleteIcon fontSize="small" />
+              </IconButton>
+            </Stack>
+          );
+        })}
+      </Stack>
+      <Button size="small" startIcon={<LinkIcon fontSize="small" />} onClick={onAddPartner} sx={{ m: 1 }}>
+        {isSuperset ? 'Add to superset' : 'Superset with another exercise'}
+      </Button>
+    </Card>
+  );
+}
