@@ -6,7 +6,8 @@ import { getProfile, getTrainingMaxes } from '@/server/repo';
 export const dynamic = 'force-dynamic';
 
 export default async function SettingsPage() {
-  const [profile, trainingMaxes] = await Promise.all([getProfile(), getTrainingMaxes()]);
+  const profile = await getProfile();
+  const trainingMaxes = await getTrainingMaxes(profile.timezone);
   return (
     <AppShell title="Settings" backHref="/profile">
       <PageContainer>

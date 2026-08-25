@@ -2,6 +2,7 @@
 import { revalidateTag } from 'next/cache';
 import { redirect } from 'next/navigation';
 import type { RoutineDay } from '@/core/builder/types';
+import { today } from '@/core/dates';
 import { generateProgram } from '@/core/generator/generateProgram';
 import { PROFILE_EQUIPMENT } from '@/core/library/equipment';
 import { detectPRs } from '@/core/progression/prs';
@@ -64,8 +65,9 @@ export async function completeOnboarding(input: OnboardingInput): Promise<Result
 /** Generate from whatever the profile currently says and make it the active block. */
 export async function buildProgram(startDate?: string): Promise<string> {
   await requireUnlocked();
-  const [profile, trainingMaxes, painFlags] = await Promise.all([
-    repo.getProfile(), repo.getTrainingMaxes(), repo.activePainFlags(),
+  const profile = await repo.getProfile();
+  const [trainingMaxes, painFlags] = await Promise.all([
+    repo.getTrainingMaxes(profile.timezone), repo.activePainFlags(profile.timezone),
   ]);
   const equipment = profile.equipment.length
     ? profile.equipment
@@ -84,7 +86,7 @@ export async function buildProgram(startDate?: string): Promise<string> {
     microPlates: profile.microPlates,
     bodyweightKg: profile.bodyweightKg,
     paceFactor: profile.paceFactor,
-    startDate: startDate ?? new Date().toISOString().slice(0, 10),
+    startDate: startDate ?? today(profile.timezone),
     seed: Math.floor(Math.random() * 1_000_000),
   };
   const program = generateProgram(generatorInput);
@@ -142,7 +144,8 @@ export async function logSets(sets: repo.LoggedSetRow[]): Promise<Result> {
     revalidateTag(TAGS.logs);
     const pain = sets.find((s) => s.painFlag);
     if (pain?.painFlag) {
-      await repo.addPainFlag(pain.painFlag as PainArea);
+      const profile = await repo.getProfile();
+      await repo.addPainFlag(pain.painFlag as PainArea, profile.timezone);
       revalidateTag(TAGS.profile);
     }
     await detectAndRecordPRs(sets);
@@ -295,13 +298,12 @@ export async function saveRoutineDays(routineId: string, days: RoutineDay[]): Pr
 export async function scheduleRoutine(routineId: string): Promise<Result<{ programId: string }>> {
   try {
     await requireUnlocked();
-    const [routine, profile, trainingMaxes] = await Promise.all([
-      routines.getRoutine(routineId), repo.getProfile(), repo.getTrainingMaxes(),
-    ]);
+    const [routine, profile] = await Promise.all([routines.getRoutine(routineId), repo.getProfile()]);
     if (!routine) return { ok: false, error: 'Routine not found' };
+    const trainingMaxes = await repo.getTrainingMaxes(profile.timezone);
 
     const programId = await routines.scheduleRoutine(routine, {
-      startDate: new Date().toISOString().slice(0, 10),
+      startDate: today(profile.timezone),
       trainingMaxes,
       increment: profile.microPlates ? 1.25 : 2.5,
       paceFactor: profile.paceFactor,

@@ -1,5 +1,6 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
+import { today } from '@/core/dates';
 import { getExercise } from '@/core/library/exercises';
 import { browseGroupsFor } from '@/core/library/query';
 import { GROUP_LABEL, type MuscleGroup } from '@/core/library/muscles';
@@ -45,7 +46,23 @@ async function loggedSetsSince(days: number): Promise<LoggedRow[]> {
   return (data ?? []) as LoggedRow[];
 }
 
-/** Exported for its own test — the trickiest, highest-stakes bit of pure logic here: get this wrong and every set in the week is silently misattributed. */
+/**
+ * Exported for its own test — the trickiest, highest-stakes bit of pure
+ * logic here: get this wrong and every set in the week is silently
+ * misattributed.
+ *
+ * Known gap, deliberately out of scope for docs/07-PRODUCTION-REVIEW.md #7:
+ * `date` here is a `created_at` timestamp already fixed to a UTC instant,
+ * and `getDay`/`setDate`/`toISOString` below all operate on it in UTC (a
+ * Vercel function's local time), not the athlete's own timezone. A set
+ * logged late on a Sunday evening in Stockholm can bucket into the
+ * following UTC Monday and be attributed to the wrong week. Fixing this
+ * properly means converting to the profile's local calendar day *before*
+ * finding that week's Monday, which changes this function's tested
+ * contract (and weeklyVolume's, and calendarActivity's) — worth its own
+ * pass rather than folding into the #7 fix, which was scoped to the eight
+ * "what date is today" call sites, not day-bucketing of historical rows.
+ */
 export function isoWeekStart(date: Date): string {
   const d = new Date(date);
   const day = (d.getDay() + 6) % 7; // 0 = Monday
@@ -161,16 +178,15 @@ export interface ConsistencySummary {
 }
 
 export const consistency = unstable_cache(
-  async (): Promise<ConsistencySummary | null> => {
+  async (timezone?: string): Promise<ConsistencySummary | null> => {
     const { data: program, error: programError } = await db()
       .from('t4m_program').select('id, weeks').eq('status', 'active').maybeSingle();
     if (programError) throw new Error(programError.message);
     if (!program) return null;
 
-    const today = new Date().toISOString().slice(0, 10);
     const { data, error } = await db()
       .from('t4m_session').select('status, week_number, scheduled_date')
-      .eq('program_id', program.id).lte('scheduled_date', today);
+      .eq('program_id', program.id).lte('scheduled_date', today(timezone));
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as { status: string; week_number: number; scheduled_date: string }[];
     if (rows.length === 0) return null;

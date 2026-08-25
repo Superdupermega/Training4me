@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
 import { AnalysisTabs } from '@/components/profile/AnalysisTabs';
+import { today } from '@/core/dates';
 import {
   calendarActivity, consistency, e1rmSeries, volumeByMuscleGroup, weeklyVolume,
 } from '@/server/analytics';
@@ -25,10 +26,11 @@ const DEFAULT_LIFT = 'back-squat';
  * see docs/DECISIONS.md.
  */
 export default async function ProfilePage() {
-  const [profile, trainingMaxes, prs, weekly, byMuscleGroup, consistencySummary, calendar, strengthSeries] =
+  const profile = await getProfile();
+  const [trainingMaxes, prs, weekly, byMuscleGroup, consistencySummary, calendar, strengthSeries] =
     await Promise.all([
-      getProfile(), getTrainingMaxes(), listPRs(),
-      weeklyVolume(8), volumeByMuscleGroup(4), consistency(), calendarActivity(84),
+      getTrainingMaxes(profile.timezone), listPRs(),
+      weeklyVolume(8), volumeByMuscleGroup(4), consistency(profile.timezone), calendarActivity(84),
       e1rmSeries(DEFAULT_LIFT),
     ]);
 
@@ -68,6 +70,7 @@ export default async function ProfilePage() {
             paceFactor={profile.paceFactor}
             prs={prs}
             trainingMaxes={trainingMaxes}
+            today={today(profile.timezone)}
           />
         </Stack>
       </PageContainer>

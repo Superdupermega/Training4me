@@ -12,7 +12,7 @@ export default async function OnboardingPage({
   if (profile.onboardedAt && !edit) redirect('/today');
 
   const isEdit = Boolean(edit) && Boolean(profile.onboardedAt);
-  const currentTrainingMaxes = isEdit ? await getTrainingMaxes() : {};
+  const currentTrainingMaxes = isEdit ? await getTrainingMaxes(profile.timezone) : {};
 
   return (
     <OnboardingWizard

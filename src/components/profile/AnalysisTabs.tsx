@@ -19,12 +19,13 @@ interface Props {
   paceFactor: number;
   prs: Pr[];
   trainingMaxes: Record<string, number>;
+  today: string;
 }
 
 const TABS = ['Strength', 'Volume', 'Consistency', 'Records'] as const;
 
 export function AnalysisTabs({
-  strength, weekly, byMuscleGroup, consistencySummary, calendar, paceFactor, prs, trainingMaxes,
+  strength, weekly, byMuscleGroup, consistencySummary, calendar, paceFactor, prs, trainingMaxes, today,
 }: Props) {
   const [tab, setTab] = useState(0);
 
@@ -38,7 +39,9 @@ export function AnalysisTabs({
         <StrengthTab initialExerciseId={strength.exerciseId} initialSeries={strength.series} trainingMaxes={trainingMaxes} />
       )}
       {tab === 1 && <VolumeTab weekly={weekly} byMuscleGroup={byMuscleGroup} />}
-      {tab === 2 && <ConsistencyTab summary={consistencySummary} calendar={calendar} paceFactor={paceFactor} />}
+      {tab === 2 && (
+        <ConsistencyTab summary={consistencySummary} calendar={calendar} paceFactor={paceFactor} today={today} />
+      )}
       {tab === 3 && <RecordsTab prs={prs} trainingMaxes={trainingMaxes} />}
     </Box>
   );

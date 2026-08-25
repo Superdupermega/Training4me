@@ -52,6 +52,12 @@ async function loadContexts(
       .from('t4m_logged_set').select('session_id, exercise_id, set_number, reps, weight_kg, rpe, created_at')
       .in('exercise_id', exerciseIds).eq('skipped', false)
       .order('created_at', { ascending: false }).limit(1000),
+    // Uses getTrainingMaxes' default timezone rather than threading
+    // profile.timezone through this batched, N+1-sensitive hot path — the
+    // window where that would matter is the same hour or two each evening
+    // this whole fix (docs/07-PRODUCTION-REVIEW.md #7) closes for
+    // everywhere the athlete actually sees "today", and even then only
+    // affects which of two adjacent days' training-max rows shows here.
     getTrainingMaxes(),
   ]);
   if (logsError) throw new Error(logsError.message);

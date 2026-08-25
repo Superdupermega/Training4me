@@ -1,6 +1,7 @@
 import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import { today as todayInTimeZone } from '@/core/dates';
 import { EmptyChart } from './EmptyChart';
 
 export interface HeatCell {
@@ -15,7 +16,9 @@ const WEEKDAY_LABEL = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
  * DECISIONS.md: a shorter, denser window reads better at phone width and
  * needs no horizontal scroll). One column per week, Monday at the top.
  */
-export function Heatmap({ cells, weeks = 12 }: { cells: HeatCell[]; weeks?: number }) {
+export function Heatmap({
+  cells, weeks = 12, today = todayInTimeZone(),
+}: { cells: HeatCell[]; weeks?: number; today?: string }) {
   const hasAny = cells.some((c) => c.value > 0);
   if (!hasAny) {
     return <EmptyChart height={120} message="Nothing logged yet — your training days fill in here." />;
@@ -24,12 +27,15 @@ export function Heatmap({ cells, weeks = 12 }: { cells: HeatCell[]; weeks?: numb
   const byDate = new Map(cells.map((c) => [c.date, c.value]));
   const max = Math.max(...cells.map((c) => c.value), 1);
 
-  const today = new Date();
   const days: { date: string; value: number }[] = [];
   const totalDays = weeks * 7;
   for (let i = totalDays - 1; i >= 0; i -= 1) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
+    // `today` is a plain YYYY-MM-DD, not a moment — shift it as a UTC noon
+    // Date purely to walk whole calendar days, same trick as
+    // src/core/dates.ts's daysFromToday, so this never re-derives "today"
+    // from the server's own UTC clock the way the old `new Date()` here did.
+    const d = new Date(`${today}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - i);
     const iso = d.toISOString().slice(0, 10);
     days.push({ date: iso, value: byDate.get(iso) ?? 0 });
   }

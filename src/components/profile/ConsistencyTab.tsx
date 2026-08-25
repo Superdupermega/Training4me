@@ -9,9 +9,10 @@ interface Props {
   summary: ConsistencySummary | null;
   calendar: CalendarDay[];
   paceFactor: number;
+  today: string;
 }
 
-export function ConsistencyTab({ summary, calendar, paceFactor }: Props) {
+export function ConsistencyTab({ summary, calendar, paceFactor, today }: Props) {
   return (
     <Stack spacing={2}>
       <Card variant="outlined" sx={{ p: 2 }}>
@@ -40,7 +41,7 @@ export function ConsistencyTab({ summary, calendar, paceFactor }: Props) {
       <Box>
         <Typography variant="overline" color="text.secondary">Last 12 weeks</Typography>
         <Card variant="outlined" sx={{ mt: 1, p: 2 }}>
-          <Heatmap cells={calendar} weeks={12} />
+          <Heatmap cells={calendar} weeks={12} today={today} />
         </Card>
       </Box>
 
