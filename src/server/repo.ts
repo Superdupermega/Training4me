@@ -310,12 +310,23 @@ export const activePainFlags = unstable_cache(
   { tags: [TAGS.profile], revalidate: 3600 },
 );
 
+export interface Pr {
+  id: string;
+  exercise_id: string;
+  kind: string;
+  value: number;
+  reps: number | null;
+  weight_kg: number | null;
+  achieved_at: string;
+  session_id: string | null;
+}
+
 export const listPRs = unstable_cache(
-  async () => {
+  async (): Promise<Pr[]> => {
     const { data, error } = await db()
       .from('t4m_pr').select('*').order('achieved_at', { ascending: false }).limit(50);
     if (error) throw new Error(error.message);
-    return data ?? [];
+    return (data ?? []) as Pr[];
   },
   ['t4m-list-prs'],
   { tags: [TAGS.logs] },

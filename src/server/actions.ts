@@ -8,6 +8,7 @@ import { PROFILE_EQUIPMENT } from '@/core/library/equipment';
 import { detectPRs } from '@/core/progression/prs';
 import { applyReadiness } from '@/core/progression/readiness';
 import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness } from '@/core/types';
+import * as analytics from './analytics';
 import { exerciseContext, type ExerciseContext } from './exerciseContext';
 import { COOKIE_MAX_AGE, COOKIE_NAME, deriveToken, safeEqual } from './lock';
 import * as repo from './repo';
@@ -349,6 +350,17 @@ export async function getExerciseContexts(
 ): Promise<Result<Record<string, ExerciseContext>>> {
   try {
     const data = await exerciseContext(exerciseIds, opts);
+    return { ok: true, data };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------- analysis (chunk 20)
+
+export async function getE1rmSeries(exerciseId: string): Promise<Result<Awaited<ReturnType<typeof analytics.e1rmSeries>>>> {
+  try {
+    const data = await analytics.e1rmSeries(exerciseId);
     return { ok: true, data };
   } catch (err) {
     return fail(err);

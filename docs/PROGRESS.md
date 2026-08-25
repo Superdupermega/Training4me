@@ -473,3 +473,74 @@ and the DB-touching half of `exerciseContext` has no live test, consistent
 with the rest of `src/server`.
 
 **Blocked:** nothing.
+
+## Chunk 20 — Profile: log & data analysis — 2026-08-25
+**Landed:** `/profile` is now the analysis home the plan called for — four
+tabs (Strength / Volume / Consistency / Records), each answering one real
+question, hand-rolled SVG charts with no charting dependency, and a
+designed empty state at 0/1/2 data points on every one of them.
+
+**Charts** (`src/components/charts/`, no client JS where it isn't needed —
+`LineChart` and `BarChart` are plain server-renderable SVG, only the tab
+switching itself is client-side):
+- `LineChart` — single-series trend (e1RM over time), PRs marked as larger
+  gold dots, an accessible `<table>` fallback behind every chart.
+- `BarChart` (vertical, weekly series) and `HorizontalBarChart` (ranking —
+  muscle groups by volume).
+- `Heatmap` — a 12-week calendar grid, one column per week, intensity =
+  working sets that day.
+- `EmptyChart` — the shared 0/1-point state every chart above renders
+  through, so "nothing yet" always reads as designed, never as broken.
+  Colours come from MUI's CSS-variable theme (`var(--mui-palette-*)`),
+  correct in light and dark with no re-render on a theme switch.
+
+**Analytics** (`src/server/analytics.ts`, `unstable_cache`-wrapped, tagged
+`logs`/`sessions` like every other repo read): `weeklyVolume` (sets +
+tonnage, 8 weeks, gaps filled rather than dropped), `volumeByMuscleGroup`
+(a set credited to every primary-muscle group it hits, split evenly —
+`browseGroupsFor` from chunk 16/17, reused not reimplemented),
+`e1rmSeries` (best Epley e1RM per day for one exercise, with a
+running-max PR flag computed locally — no dependency on `t4m_pr`),
+`consistency` (completed/skipped/total for the active block's sessions
+up to today), `calendarActivity` (sets per day, feeds the heatmap).
+Muscle-group attribution happens in JS against the static library, not
+in SQL — the same v1 decision the library itself already made
+(`DECISIONS.md` 2026-08-24).
+
+**UI:** `AnalysisTabs` (client, tab switching only) wraps `StrengthTab`
+(client — a lift-selector chip row that fetches a new `e1rmSeries` via a
+new `getE1rmSeries` action when you switch lifts, training max shown
+alongside), `VolumeTab`, `ConsistencyTab` (headline % + the heatmap + the
+pace-factor note that used to live only in Settings), and `RecordsTab`
+(training maxes + every PR, now filterable by muscle group — the same
+list `/history` already showed, given a proper home and a filter).
+`/profile/page.tsx` fetches everything in one `Promise.all` and passes it
+down; only switching the Strength tab's lift triggers a further request.
+
+**Verified:** 242 tests (238 → +4, `isoWeekStart`'s Monday/Sunday/
+month-boundary bucketing — the one piece of this chunk's pure logic worth
+its own test regardless of the "no live-query tests" convention). Lint,
+typecheck, build all clean. `/profile` compiles and routes correctly
+against a dev server; the live Supabase-backed data path (real weekly
+buckets, real muscle-group splits, real e1RM trends) could not be observed
+in this sandbox — same network restriction as every earlier chunk, and
+this is also the first chunk where that limitation is genuinely costly:
+`t4m_logged_set` has zero rows today, so every chart here has only been
+exercised through its own empty-state path, never its populated one.
+
+**Deviated:** four, all in `DECISIONS.md` — no Body tab, no
+`/history/[sessionId]` prescribed-vs-actual diff view, no dev seed script
+(all three clean follow-ups, not corners cut); `volumeByMuscleGroup` is a
+horizontal ranking rather than a stacked-by-week chart (this app's
+three-accent palette doesn't support 12 legible stacked series); the
+heatmap covers 12 weeks, not 12 months (fits without horizontal scroll at
+phone width); and every volume count includes ramp sets, since
+`t4m_logged_set` has no `kind` column to filter them by — a small,
+consistent, documented simplification, not a silent one.
+
+**Next chunk must know:** the four tabs' data-fetch pattern (one
+`Promise.all` server-side, passed down to a thin client tab-switcher) is
+the shape to extend if the Body tab gets built later — it slots in as a
+fifth tab and a fifth parallel fetch, nothing else changes.
+
+**Blocked:** nothing.
