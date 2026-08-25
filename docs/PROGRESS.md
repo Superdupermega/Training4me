@@ -278,3 +278,53 @@ imported client-side — worth a look in chunk 21's budget pass, not a blocker
 now.
 
 **Blocked:** nothing.
+
+## Chunk 17 — Exercise browser & detail pages — 2026-08-25
+**Landed:** `/exercises` (stubbed in chunk 15) is now the real browser, and
+`/exercises/[id]` is a real detail page — the first place chunk 16's 286-
+movement library is actually visible in the app.
+
+- `src/components/exercises/ExerciseBrowser.tsx` (client): search (name /
+  Swedish name / id, case-insensitive, debounced by React's own render
+  cycle — no debounce timer needed at 286 items), a horizontally-scrollable
+  muscle-group chip row (`browseGroupsFor` from chunk 16 decides membership,
+  so a squat correctly appears under both Quads and Hamstrings & glutes), a
+  style chip row, and an "only what I have" equipment switch defaulting on.
+  With no search/group filter active, results render grouped by muscle group
+  with a subheader and count per group, exactly per the design; a filter or
+  search collapses to a flat list. `EXERCISES` is imported directly in the
+  client component rather than threaded through as a server prop — it's a
+  static build-time array, so passing it through RSC serialization would
+  have doubled the transfer for no benefit.
+- `/exercises/[id]`: header (tier, mechanic, unilateral, skill-gated,
+  style chips), primary/secondary muscle chips plus which browse groups the
+  movement is filed under, the coaching cue (and `howTo` steps where
+  present), equipment needed, a "best set logged" line and full history from
+  `historyForExercise` (already existed, already indexed), and navigable
+  alternatives. Unknown ids hit `notFound()`.
+- Both routes get `AppShell`/`PageContainer` treatment matching chunk 15's
+  conventions; the detail page uses `backHref="/exercises"` since it's a
+  sub-page, not its own destination. Shared `STYLE_LABEL`/`TIER_LABEL` factored
+  into `src/components/exercises/labels.ts` rather than duplicated across the
+  browser and detail page.
+
+**Deviated:** no chart, no "expected from your 1RM" panel (both genuinely
+depend on chunk 19/20 infrastructure that doesn't exist yet — see
+`DECISIONS.md`), and no custom-exercise creation (deferred to chunk 18,
+where it belongs next to the builder that actually needs it).
+
+**Verified:** `pnpm test` (221/221 — unchanged, this chunk is UI-only),
+`pnpm lint`, `pnpm typecheck`, `pnpm build` all clean.
+`/exercises`, `/exercises/back-squat`, `/exercises/turkish-get-up` all
+compile and route correctly against a dev server; an unknown id correctly
+renders Next's not-found content. Data-bearing rendering (equipment
+filtering against a real profile, real logged history) could not be
+observed live — same sandbox network restriction as every earlier chunk.
+
+**Next chunk must know:** the exercise picker chunk 18's builder needs is
+`ExerciseBrowser`'s filtering logic, not a new implementation — factor a
+shared picker component out of it rather than duplicating the search/filter
+logic a third time. `historyForExercise`, `browseGroupsFor` and the
+`labels.ts` maps are all reusable as-is.
+
+**Blocked:** nothing.
