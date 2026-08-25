@@ -277,6 +277,7 @@ export async function goToPlan(): Promise<never> {
 /** Clears the active program (history stays) so the athlete is back at "no plan yet". */
 export async function deleteActiveProgram(): Promise<Result> {
   try {
+    await requireUnlocked();
     await repo.abandonActiveProgram();
     revalidateTag(TAGS.program);
     revalidateTag(TAGS.sessions);
