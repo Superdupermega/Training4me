@@ -53,6 +53,8 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
   const [queued, setQueued] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [finishing, setFinishing] = useState(false);
+  const [finishError, setFinishError] = useState<string | null>(null);
   const [askReadiness, setAskReadiness] = useState(session.status === 'planned');
   const [startedAt] = useState(() => (session.startedAt ? new Date(session.startedAt).getTime() : Date.now()));
   const [now, setNow] = useState(startedAt);
@@ -126,16 +128,25 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
 
   const elapsed = Math.max(0, Math.round((now - startedAt) / 1000));
 
+  // Shared by both the readiness dialog's Skip and Start actions — either
+  // way this is the same server call with the same failure mode. Previously
+  // Skip fired beginSession without awaiting or checking the result at all:
+  // on failure the session never got `started_at`, so the elapsed timer
+  // silently restarted from zero on every reload, with an unhandled
+  // rejection the only trace. See docs/07-PRODUCTION-REVIEW.md #9.
+  const startSession = useCallback(async (readiness: Readiness | null) => {
+    setAskReadiness(false);
+    const result = await beginSession(session.id, readiness);
+    if (result.ok) router.refresh();
+    else setToast(`Could not start the session: ${result.error}`);
+  }, [router, session.id]);
+
   return (
     <Box sx={{ minHeight: '100dvh', pb: rest ? 16 : 12 }}>
       <ReadinessDialog
         open={askReadiness}
-        onSkip={() => { setAskReadiness(false); beginSession(session.id, null); }}
-        onSubmit={async (readiness: Readiness) => {
-          setAskReadiness(false);
-          const result = await beginSession(session.id, readiness);
-          if (result.ok) router.refresh();
-        }}
+        onSkip={() => startSession(null)}
+        onSubmit={(readiness: Readiness) => startSession(readiness)}
       />
 
       <TopBar
@@ -252,7 +263,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
         />
       )}
 
-      <Dialog open={confirmFinish} onClose={() => setConfirmFinish(false)}>
+      <Dialog open={confirmFinish} onClose={() => (finishing ? undefined : setConfirmFinish(false))}>
         <DialogTitle>Finish this session?</DialogTitle>
         <DialogContent>
           <Typography color="text.secondary">
@@ -261,20 +272,40 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
           </Typography>
           {queued > 0 && (
             <Alert severity="info" sx={{ mt: 2 }}>
-              {queued} sets still to sync. They will send as soon as you are back online.
+              {queued} sets still to sync. They will send as soon as you are back online. PRs
+              among them are still detected whenever they do.
+            </Alert>
+          )}
+          {finishError && (
+            <Alert severity="error" sx={{ mt: 2 }}>
+              Could not finish the session: {finishError}. Nothing was lost — try again.
             </Alert>
           )}
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2 }}>
-          <Button variant="text" onClick={() => setConfirmFinish(false)}>Keep going</Button>
+          <Button variant="text" onClick={() => setConfirmFinish(false)} disabled={finishing}>
+            Keep going
+          </Button>
           <Button
+            disabled={finishing}
             onClick={async () => {
+              setFinishing(true);
+              setFinishError(null);
               await flush();
-              await finishSession(session.id, elapsed);
-              router.push('/today');
+              const result = await finishSession(session.id, elapsed);
+              if (result.ok) {
+                router.push('/today');
+                return;
+              }
+              // finishSession returned a real failure — previously this was
+              // discarded outright and the app navigated away regardless,
+              // telling the user the session was complete when it was not.
+              // See docs/07-PRODUCTION-REVIEW.md #9.
+              setFinishing(false);
+              setFinishError(result.error);
             }}
           >
-            Finish
+            {finishing ? 'Finishing…' : 'Finish'}
           </Button>
         </DialogActions>
       </Dialog>

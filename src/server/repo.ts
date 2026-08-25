@@ -224,6 +224,13 @@ export interface LoggedSetRow {
   reps?: number | null; weightKg?: number | null; rpe?: number | null;
   distanceM?: number | null; durationSec?: number | null;
   skipped?: boolean; painFlag?: PainArea | null; clientLoggedAt?: string;
+  /**
+   * Client-only: the offline outbox's version stamp for this exact row
+   * instance (src/components/session/outbox.ts). Never read here — `logSets`
+   * below maps only the named fields into the database write, so this is
+   * dropped on arrival rather than sent to Postgres.
+   */
+  seq?: number;
 }
 
 /** Idempotent on (session, block, slot, set) so an offline replay cannot duplicate. */
@@ -324,7 +331,12 @@ export interface Pr {
 export const listPRs = unstable_cache(
   async (): Promise<Pr[]> => {
     const { data, error } = await db()
-      .from('t4m_pr').select('*').order('achieved_at', { ascending: false }).limit(50);
+      // Used both for display (which slices to a handful) and, since #8, as
+      // the source of truth `detectAndRecordPRs` compares every new set
+      // against — it needs to see every exercise's true best, not just the
+      // 50 most recently broken records. 1000 comfortably covers this app's
+      // ~300-exercise library × 4 PR kinds even years into a single log.
+      .from('t4m_pr').select('*').order('achieved_at', { ascending: false }).limit(1000);
     if (error) throw new Error(error.message);
     return (data ?? []) as Pr[];
   },

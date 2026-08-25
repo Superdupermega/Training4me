@@ -145,10 +145,35 @@ export async function logSets(sets: repo.LoggedSetRow[]): Promise<Result> {
       await repo.addPainFlag(pain.painFlag as PainArea);
       revalidateTag(TAGS.profile);
     }
+    await detectAndRecordPRs(sets);
     return { ok: true };
   } catch (err) {
     return fail(err);
   }
+}
+
+/**
+ * Runs PR detection against exactly the sets in this one batch, whether they
+ * were logged live or arrived later out of the offline outbox — incremental
+ * and order-independent, rather than the one-shot pass `finishSession` used
+ * to run against whatever was already in the database at that instant. A set
+ * still queued client-side when a session was finished offline used to be
+ * silently skipped for PRs forever: this function runs once, whenever that
+ * set actually lands, however late. See docs/07-PRODUCTION-REVIEW.md #8.
+ */
+async function detectAndRecordPRs(sets: repo.LoggedSetRow[]): Promise<void> {
+  if (sets.length === 0) return;
+  const existing = await repo.listPRs();
+  const prs = detectPRs(
+    sets.map((s) => ({
+      exerciseId: s.exerciseId, reps: s.reps ?? 0, weightKg: s.weightKg ?? 0,
+      skipped: s.skipped ?? false, sessionId: s.sessionId,
+    })),
+    existing.map((p) => ({ exerciseId: p.exercise_id, kind: p.kind, value: Number(p.value) })),
+  );
+  if (prs.length === 0) return;
+  await repo.insertPRs(prs.map((p) => ({ ...p, sessionId: p.sessionId ?? sets[0]!.sessionId })));
+  revalidateTag(TAGS.logs);
 }
 
 export async function finishSession(sessionId: string, actualSec: number, notes?: string): Promise<Result> {
@@ -158,17 +183,9 @@ export async function finishSession(sessionId: string, actualSec: number, notes?
       status: 'completed', completed_at: new Date().toISOString(),
       actual_sec: actualSec, notes: notes ?? null,
     });
-
-    const logged = await repo.getLoggedSets(sessionId);
-    const existing = await repo.listPRs();
-    const prs = detectPRs(
-      logged.map((l) => ({
-        exerciseId: l.exercise_id, reps: l.reps ?? 0,
-        weightKg: l.weight_kg ? Number(l.weight_kg) : 0, skipped: l.skipped,
-      })),
-      existing.map((p) => ({ exerciseId: p.exercise_id, kind: p.kind, value: Number(p.value) })),
-    );
-    await repo.insertPRs(prs.map((p) => ({ ...p, sessionId })));
+    // PR detection no longer happens here — see detectAndRecordPRs above.
+    // Every set this session ever logs, including ones still queued offline
+    // right now, runs through it via logSets whenever it actually arrives.
     await recalibratePace();
 
     revalidateTag(TAGS.sessions);
