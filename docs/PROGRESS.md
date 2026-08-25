@@ -47,3 +47,27 @@ key is not available in this environment. First run after adding it to
 **Blocked:** Vercel project creation returns 403 from this session's Vercel
 connection, so the project has to be imported once by hand — steps are in the
 README. After that, pushes deploy automatically.
+
+## Chunk 14–21 — Redesign plan — 2026-08-25
+**Landed:** `docs/06-REDESIGN-PLAN.md` plus eight chunk files (14–21) covering
+performance, a five-destination Material 3 shell, the muscle taxonomy and
+library expansion, the exercise browser, the program builder, exercise context
+("last time / expected"), the analysis view, and close-out polish. No code
+changed.
+
+**Diagnosed:** the "unresponsive menus" complaint is four compounding causes —
+`router.push` in the bottom nav (no prefetch, no optimistic highlight), no
+`loading.tsx` anywhere against `force-dynamic` routes, serial Supabase queries,
+and Vercel functions in `iad1` against a Supabase project in `eu-north-1`.
+Full write-up in `06-REDESIGN-PLAN.md` §2; fixes in chunk 14.
+
+**Next chunk must know:**
+- `t4m_session.blocks` (JSONB) is the runtime contract. The builder is a second
+  producer of that shape, not a second player.
+- Growing the exercise library would silently reshape every generated program.
+  Chunk 16 adds `inGeneratorPool` and a tripwire test pinning the pool at 93.
+- `docs/02-DATA-MODEL.md` describes a schema that was never built. The live
+  schema is dumped in `06-REDESIGN-PLAN.md` §7; chunk 21 rewrites the doc.
+- Six known defects are listed in `chunk-21-polish.md` §1.
+
+**Blocked:** nothing. Run chunk 14 first.

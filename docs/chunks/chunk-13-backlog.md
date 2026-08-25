@@ -28,5 +28,10 @@ beats speculation.
 10. **Plate calculator** — given a target load and available plates, show what to
     load per side. Small feature, disproportionately loved.
 
+**Superseded in part.** Chunks 14–21 (the v2 redesign, see
+`docs/06-REDESIGN-PLAN.md`) take priority over this list. Item 7 is absorbed
+into chunk 20 (Profile → Body). Items 1, 2, 3, 4, 5, 6, 8, 9 and 10 remain open
+backlog and should be picked up only after chunk 21.
+
 For each: write a short chunk file first (mission, deliverables, acceptance,
 do-not), then run it. Keep the discipline — that's what made the first twelve work.
