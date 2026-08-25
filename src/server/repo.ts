@@ -1,8 +1,24 @@
 import 'server-only';
+import { unstable_cache } from 'next/cache';
 import { db, PROFILE_ID } from './db';
 import type {
   Equipment, Experience, GeneratorInput, PainArea, PlannedSession, Program, SessionBlock,
 } from '@/core/types';
+
+/**
+ * Every read below is wrapped in `unstable_cache`, tagged by what it reads.
+ * Mutations in `actions.ts` call `revalidateTag` for exactly the tags they
+ * touch. This is what turns "every page tap re-crosses the Atlantic to
+ * Supabase" into "the first tap after a change does, everything after is
+ * free" — the single user of this app changes data far less often than they
+ * look at it.
+ */
+export const TAGS = {
+  profile: 'profile',
+  program: 'program',
+  sessions: 'sessions',
+  logs: 'logs',
+} as const;
 
 export interface Profile {
   displayName: string | null;
@@ -77,18 +93,22 @@ const toSession = (r: SessionRecord): SessionRow => ({
   autoregulated: r.autoregulated, notes: r.notes,
 });
 
-export async function getProfile(): Promise<Profile> {
-  const { data, error } = await db().from('t4m_profile').select('*').eq('id', PROFILE_ID).single();
-  if (error) throw new Error(error.message);
-  return {
-    displayName: data.display_name, experience: data.experience, daysPerWeek: data.days_per_week,
-    sessionCapSec: data.session_cap_sec, equipmentProfile: data.equipment_profile,
-    equipment: data.equipment ?? [], allowAdvanced: data.allow_advanced,
-    microPlates: data.micro_plates, bodyweightKg: Number(data.bodyweight_kg),
-    paceFactor: Number(data.pace_factor), preferredWeekdays: data.preferred_weekdays ?? [],
-    mesocycleWeeks: data.mesocycle_weeks, onboardedAt: data.onboarded_at,
-  };
-}
+export const getProfile = unstable_cache(
+  async (): Promise<Profile> => {
+    const { data, error } = await db().from('t4m_profile').select('*').eq('id', PROFILE_ID).single();
+    if (error) throw new Error(error.message);
+    return {
+      displayName: data.display_name, experience: data.experience, daysPerWeek: data.days_per_week,
+      sessionCapSec: data.session_cap_sec, equipmentProfile: data.equipment_profile,
+      equipment: data.equipment ?? [], allowAdvanced: data.allow_advanced,
+      microPlates: data.micro_plates, bodyweightKg: Number(data.bodyweight_kg),
+      paceFactor: Number(data.pace_factor), preferredWeekdays: data.preferred_weekdays ?? [],
+      mesocycleWeeks: data.mesocycle_weeks, onboardedAt: data.onboarded_at,
+    };
+  },
+  ['t4m-profile'],
+  { tags: [TAGS.profile] },
+);
 
 export async function saveProfile(patch: Record<string, unknown>): Promise<void> {
   const { error } = await db()
@@ -98,16 +118,23 @@ export async function saveProfile(patch: Record<string, unknown>): Promise<void>
   if (error) throw new Error(error.message);
 }
 
-export async function getTrainingMaxes(): Promise<Record<string, number>> {
-  const { data, error } = await db()
-    .from('t4m_training_max').select('exercise_id, value_kg, effective_from')
-    .lte('effective_from', new Date().toISOString().slice(0, 10))
-    .order('effective_from', { ascending: false });
-  if (error) throw new Error(error.message);
-  const out: Record<string, number> = {};
-  for (const row of data ?? []) if (!(row.exercise_id in out)) out[row.exercise_id] = Number(row.value_kg);
-  return out;
-}
+export const getTrainingMaxes = unstable_cache(
+  async (): Promise<Record<string, number>> => {
+    const { data, error } = await db()
+      .from('t4m_training_max').select('exercise_id, value_kg, effective_from')
+      .lte('effective_from', new Date().toISOString().slice(0, 10))
+      .order('effective_from', { ascending: false });
+    if (error) throw new Error(error.message);
+    const out: Record<string, number> = {};
+    for (const row of data ?? []) if (!(row.exercise_id in out)) out[row.exercise_id] = Number(row.value_kg);
+    return out;
+  },
+  ['t4m-training-max'],
+  // Belt-and-suspenders: every mutation that changes this also revalidates the
+  // tag, but the read filters on "today", so a 1h ceiling stops a missed
+  // invalidation from going stale indefinitely across a date rollover.
+  { tags: [TAGS.profile], revalidate: 3600 },
+);
 
 export async function setTrainingMaxes(
   values: Record<string, number>,
@@ -123,16 +150,20 @@ export async function setTrainingMaxes(
   if (error) throw new Error(error.message);
 }
 
-export async function getActiveProgram(): Promise<ProgramRow | null> {
-  const { data, error } = await db()
-    .from('t4m_program').select('*').eq('status', 'active').maybeSingle();
-  if (error) throw new Error(error.message);
-  if (!data) return null;
-  return {
-    id: data.id, name: data.name, weeks: data.weeks, daysPerWeek: data.days_per_week,
-    startDate: data.start_date, status: data.status, input: data.input,
-  };
-}
+export const getActiveProgram = unstable_cache(
+  async (): Promise<ProgramRow | null> => {
+    const { data, error } = await db()
+      .from('t4m_program').select('*').eq('status', 'active').maybeSingle();
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+    return {
+      id: data.id, name: data.name, weeks: data.weeks, daysPerWeek: data.days_per_week,
+      startDate: data.start_date, status: data.status, input: data.input,
+    };
+  },
+  ['t4m-active-program'],
+  { tags: [TAGS.program] },
+);
 
 /** Replaces any active program. Planned sessions go with it; logs are kept. */
 export async function persistProgram(program: Program): Promise<string> {
@@ -161,19 +192,27 @@ export async function persistProgram(program: Program): Promise<string> {
   return data.id;
 }
 
-export async function listSessions(programId: string): Promise<SessionRow[]> {
-  const { data, error } = await db()
-    .from('t4m_session').select('*').eq('program_id', programId)
-    .order('week_number').order('day_number');
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(toSession);
-}
+export const listSessions = unstable_cache(
+  async (programId: string): Promise<SessionRow[]> => {
+    const { data, error } = await db()
+      .from('t4m_session').select('*').eq('program_id', programId)
+      .order('week_number').order('day_number');
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toSession);
+  },
+  ['t4m-list-sessions'],
+  { tags: [TAGS.sessions] },
+);
 
-export async function getSession(id: string): Promise<SessionRow | null> {
-  const { data, error } = await db().from('t4m_session').select('*').eq('id', id).maybeSingle();
-  if (error) throw new Error(error.message);
-  return data ? toSession(data) : null;
-}
+export const getSession = unstable_cache(
+  async (id: string): Promise<SessionRow | null> => {
+    const { data, error } = await db().from('t4m_session').select('*').eq('id', id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? toSession(data) : null;
+  },
+  ['t4m-get-session'],
+  { tags: [TAGS.sessions] },
+);
 
 export async function updateSession(id: string, patch: Record<string, unknown>): Promise<void> {
   const { error } = await db().from('t4m_session').update(patch).eq('id', id);
@@ -203,37 +242,53 @@ export async function logSets(sets: LoggedSetRow[]): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function getLoggedSets(sessionId: string) {
-  const { data, error } = await db()
-    .from('t4m_logged_set').select('*').eq('session_id', sessionId).order('created_at');
-  if (error) throw new Error(error.message);
-  return data ?? [];
-}
+export const getLoggedSets = unstable_cache(
+  async (sessionId: string) => {
+    const { data, error } = await db()
+      .from('t4m_logged_set').select('*').eq('session_id', sessionId).order('created_at');
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  },
+  ['t4m-logged-sets'],
+  { tags: [TAGS.logs] },
+);
 
-export async function getLogsForProgram(programId: string) {
-  const { data, error } = await db()
-    .from('t4m_logged_set')
-    .select('*, t4m_session!inner(program_id, week_number)')
-    .eq('t4m_session.program_id', programId);
-  if (error) throw new Error(error.message);
-  return data ?? [];
-}
+export const getLogsForProgram = unstable_cache(
+  async (programId: string) => {
+    const { data, error } = await db()
+      .from('t4m_logged_set')
+      .select('*, t4m_session!inner(program_id, week_number)')
+      .eq('t4m_session.program_id', programId);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  },
+  ['t4m-logs-for-program'],
+  { tags: [TAGS.logs] },
+);
 
-export async function historyForExercise(exerciseId: string) {
-  const { data, error } = await db()
-    .from('t4m_logged_set').select('*').eq('exercise_id', exerciseId).eq('skipped', false)
-    .order('created_at', { ascending: false }).limit(200);
-  if (error) throw new Error(error.message);
-  return data ?? [];
-}
+export const historyForExercise = unstable_cache(
+  async (exerciseId: string) => {
+    const { data, error } = await db()
+      .from('t4m_logged_set').select('*').eq('exercise_id', exerciseId).eq('skipped', false)
+      .order('created_at', { ascending: false }).limit(200);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  },
+  ['t4m-history-for-exercise'],
+  { tags: [TAGS.logs] },
+);
 
-export async function recentSessions(limit = 40): Promise<SessionRow[]> {
-  const { data, error } = await db()
-    .from('t4m_session').select('*').in('status', ['completed', 'skipped'])
-    .order('scheduled_date', { ascending: false }).limit(limit);
-  if (error) throw new Error(error.message);
-  return (data ?? []).map(toSession);
-}
+export const recentSessions = unstable_cache(
+  async (limit = 40): Promise<SessionRow[]> => {
+    const { data, error } = await db()
+      .from('t4m_session').select('*').in('status', ['completed', 'skipped'])
+      .order('scheduled_date', { ascending: false }).limit(limit);
+    if (error) throw new Error(error.message);
+    return (data ?? []).map(toSession);
+  },
+  ['t4m-recent-sessions'],
+  { tags: [TAGS.sessions] },
+);
 
 export async function addPainFlag(area: PainArea, days = 14): Promise<void> {
   const until = new Date();
@@ -243,20 +298,28 @@ export async function addPainFlag(area: PainArea, days = 14): Promise<void> {
   if (error) throw new Error(error.message);
 }
 
-export async function activePainFlags(): Promise<PainArea[]> {
-  const { data, error } = await db()
-    .from('t4m_pain_flag').select('area')
-    .gte('active_until', new Date().toISOString().slice(0, 10));
-  if (error) throw new Error(error.message);
-  return [...new Set((data ?? []).map((r) => r.area as PainArea))];
-}
+export const activePainFlags = unstable_cache(
+  async (): Promise<PainArea[]> => {
+    const { data, error } = await db()
+      .from('t4m_pain_flag').select('area')
+      .gte('active_until', new Date().toISOString().slice(0, 10));
+    if (error) throw new Error(error.message);
+    return [...new Set((data ?? []).map((r) => r.area as PainArea))];
+  },
+  ['t4m-active-pain-flags'],
+  { tags: [TAGS.profile], revalidate: 3600 },
+);
 
-export async function listPRs() {
-  const { data, error } = await db()
-    .from('t4m_pr').select('*').order('achieved_at', { ascending: false }).limit(50);
-  if (error) throw new Error(error.message);
-  return data ?? [];
-}
+export const listPRs = unstable_cache(
+  async () => {
+    const { data, error } = await db()
+      .from('t4m_pr').select('*').order('achieved_at', { ascending: false }).limit(50);
+    if (error) throw new Error(error.message);
+    return data ?? [];
+  },
+  ['t4m-list-prs'],
+  { tags: [TAGS.logs] },
+);
 
 export async function insertPRs(
   rows: { exerciseId: string; kind: string; value: number; reps?: number; weightKg?: number; sessionId: string }[],

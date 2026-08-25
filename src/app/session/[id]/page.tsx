@@ -15,6 +15,20 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
   const [session, profile] = await Promise.all([getSession(id), getProfile()]);
   if (!session) notFound();
 
+  if (session.status === 'completed') {
+    return (
+      <Stack spacing={2} sx={{ maxWidth: 680, mx: 'auto', p: 3 }}>
+        <Typography variant="h1">{session.title}</Typography>
+        <Typography color="text.secondary">
+          Done on {session.completedAt?.slice(0, 10)} in {Math.round((session.actualSec ?? 0) / 60)} minutes.
+        </Typography>
+        <Button component={Link} href="/plan">Back to plan</Button>
+      </Stack>
+    );
+  }
+
+  // Only a live session needs its logged sets replayed into the player —
+  // a finished one returns above without ever issuing this query.
   const logs = await getLoggedSets(id);
   const initialLogged: Record<string, LoggedValue> = {};
   for (const log of logs) {
@@ -26,18 +40,6 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       durationSec: log.duration_sec ?? undefined,
       painFlag: (log.pain_flag as PainArea | null) ?? null,
     };
-  }
-
-  if (session.status === 'completed') {
-    return (
-      <Stack spacing={2} sx={{ maxWidth: 680, mx: 'auto', p: 3 }}>
-        <Typography variant="h1">{session.title}</Typography>
-        <Typography color="text.secondary">
-          Done on {session.completedAt?.slice(0, 10)} in {Math.round((session.actualSec ?? 0) / 60)} minutes.
-        </Typography>
-        <Button component={Link} href="/plan">Back to plan</Button>
-      </Stack>
-    );
   }
 
   return (

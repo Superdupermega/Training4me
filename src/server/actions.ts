@@ -1,5 +1,5 @@
 'use server';
-import { revalidatePath } from 'next/cache';
+import { revalidateTag } from 'next/cache';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { generateProgram } from '@/core/generator/generateProgram';
@@ -9,6 +9,7 @@ import { applyReadiness } from '@/core/progression/readiness';
 import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness } from '@/core/types';
 import { COOKIE_MAX_AGE, COOKIE_NAME, deriveToken, safeEqual } from './lock';
 import * as repo from './repo';
+import { TAGS } from './repo';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -58,6 +59,7 @@ export async function completeOnboarding(input: OnboardingInput): Promise<Result
       onboarded_at: new Date().toISOString(),
     });
     await repo.setTrainingMaxes(input.trainingMaxes, 'estimated_epley');
+    revalidateTag(TAGS.profile);
     const programId = await buildProgram();
     return { ok: true, data: { programId } };
   } catch (err) {
@@ -91,13 +93,17 @@ export async function buildProgram(startDate?: string): Promise<string> {
     seed: Math.floor(Math.random() * 1_000_000),
   };
   const program = generateProgram(generatorInput);
-  return repo.persistProgram(program);
+  const programId = await repo.persistProgram(program);
+  // Every caller of buildProgram replaces the active program and its
+  // sessions, so tag both here once rather than at each call site.
+  revalidateTag(TAGS.program);
+  revalidateTag(TAGS.sessions);
+  return programId;
 }
 
 export async function regenerateProgram(): Promise<Result> {
   try {
     await buildProgram();
-    revalidatePath('/plan');
     return { ok: true };
   } catch (err) {
     return fail(err);
@@ -125,7 +131,7 @@ export async function beginSession(sessionId: string, readiness: Readiness | nul
       patch.estimated_sec = adjusted.estimatedSec;
     }
     await repo.updateSession(sessionId, patch);
-    revalidatePath(`/session/${sessionId}`);
+    revalidateTag(TAGS.sessions);
     return { ok: true };
   } catch (err) {
     return fail(err);
@@ -135,8 +141,12 @@ export async function beginSession(sessionId: string, readiness: Readiness | nul
 export async function logSets(sets: repo.LoggedSetRow[]): Promise<Result> {
   try {
     await repo.logSets(sets);
+    revalidateTag(TAGS.logs);
     const pain = sets.find((s) => s.painFlag);
-    if (pain?.painFlag) await repo.addPainFlag(pain.painFlag as PainArea);
+    if (pain?.painFlag) {
+      await repo.addPainFlag(pain.painFlag as PainArea);
+      revalidateTag(TAGS.profile);
+    }
     return { ok: true };
   } catch (err) {
     return fail(err);
@@ -162,8 +172,8 @@ export async function finishSession(sessionId: string, actualSec: number, notes?
     await repo.insertPRs(prs.map((p) => ({ ...p, sessionId })));
     await recalibratePace();
 
-    revalidatePath('/plan');
-    revalidatePath('/history');
+    revalidateTag(TAGS.sessions);
+    revalidateTag(TAGS.logs);
     return { ok: true };
   } catch (err) {
     return fail(err);
@@ -173,7 +183,7 @@ export async function finishSession(sessionId: string, actualSec: number, notes?
 export async function skipSession(sessionId: string): Promise<Result> {
   try {
     await repo.updateSession(sessionId, { status: 'skipped' });
-    revalidatePath('/plan');
+    revalidateTag(TAGS.sessions);
     return { ok: true };
   } catch (err) {
     return fail(err);
@@ -187,13 +197,13 @@ async function recalibratePace(): Promise<void> {
   const ratios = done.map((s) => (s.actualSec ?? 0) / s.estimatedSec).sort((a, b) => a - b);
   const median = ratios[Math.floor(ratios.length / 2)] ?? 1;
   await repo.saveProfile({ pace_factor: Math.min(1.3, Math.max(0.8, Number(median.toFixed(2)))) });
+  revalidateTag(TAGS.profile);
 }
 
 export async function updateSettings(patch: Record<string, unknown>): Promise<Result> {
   try {
     await repo.saveProfile(patch);
-    revalidatePath('/settings');
-    revalidatePath('/plan');
+    revalidateTag(TAGS.profile);
     return { ok: true };
   } catch (err) {
     return fail(err);
@@ -204,8 +214,8 @@ export async function startNextBlock(): Promise<Result> {
   try {
     const { rollOverTrainingMaxes } = await import('./nextBlock');
     await rollOverTrainingMaxes();
+    revalidateTag(TAGS.profile);
     await buildProgram();
-    revalidatePath('/plan');
     return { ok: true };
   } catch (err) {
     return fail(err);

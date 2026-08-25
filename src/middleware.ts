@@ -6,6 +6,20 @@ import { COOKIE_NAME, deriveToken, safeEqual } from '@/server/lock';
  * Deliberately simple: this keeps strangers out of a personal training log,
  * it is not protecting anything of value to anyone else.
  */
+
+// The PIN cannot change without a redeploy, so its derived token is computed
+// once per running Edge isolate rather than hashed on every single request.
+let cachedPin: string | undefined;
+let cachedToken: Promise<string> | null = null;
+
+function tokenForPin(pin: string): Promise<string> {
+  if (cachedPin !== pin) {
+    cachedPin = pin;
+    cachedToken = deriveToken(pin);
+  }
+  return cachedToken!;
+}
+
 export async function middleware(request: NextRequest) {
   const pin = process.env.APP_PIN;
   if (!pin) {
@@ -18,19 +32,22 @@ export async function middleware(request: NextRequest) {
     );
   }
 
-  const { pathname } = request.nextUrl;
-  if (pathname.startsWith('/unlock') || pathname.startsWith('/_next') || pathname.startsWith('/icon')) {
-    return NextResponse.next();
-  }
   const presented = request.cookies.get(COOKIE_NAME)?.value ?? '';
-  if (safeEqual(presented, await deriveToken(pin))) return NextResponse.next();
+  if (safeEqual(presented, await tokenForPin(pin))) return NextResponse.next();
 
   const url = request.nextUrl.clone();
   url.pathname = '/unlock';
-  url.searchParams.set('next', pathname);
+  url.searchParams.set('next', request.nextUrl.pathname);
   return NextResponse.redirect(url);
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icon.*).*)'],
+  // Everything except: Next's own asset pipeline (in full, not just the
+  // static/image sub-paths — an RSC prefetch or a webpack-hmr request under
+  // any other _next/* sub-path used to still pay for an Edge invocation),
+  // the unlock page itself (no reason to gate the gate), and static files
+  // that need no lock at all.
+  matcher: [
+    '/((?!_next/|unlock|favicon.ico|manifest.webmanifest|icon.*|.*\\.svg$).*)',
+  ],
 };

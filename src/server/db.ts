@@ -1,5 +1,5 @@
 import 'server-only';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * The project URL is not a secret — it is a public endpoint, and row-level
@@ -30,8 +30,15 @@ function resolveKey(): { key: string; usingSecret: boolean } {
   return { key: PUBLISHABLE_KEY, usingSecret: false };
 }
 
-export function db() {
-  return createClient(SUPABASE_URL, resolveKey().key, { auth: { persistSession: false } });
+// Memoised at module scope: there is no per-request auth state (persistSession
+// is off and the key never varies within a running process), so a new client
+// per call was pure waste — every call re-did URL parsing and header setup for
+// nothing. One client, reused for the life of the server instance.
+let client: SupabaseClient | null = null;
+
+export function db(): SupabaseClient {
+  if (!client) client = createClient(SUPABASE_URL, resolveKey().key, { auth: { persistSession: false } });
+  return client;
 }
 
 export const PROFILE_ID = 'me';

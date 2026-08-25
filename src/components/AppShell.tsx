@@ -6,8 +6,9 @@ import BottomNavigation from '@mui/material/BottomNavigation';
 import BottomNavigationAction from '@mui/material/BottomNavigationAction';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
-import { usePathname, useRouter } from 'next/navigation';
-import type { ReactNode } from 'react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
 
 const TABS = [
   { label: 'Plan', value: '/plan', icon: <CalendarMonthIcon /> },
@@ -17,8 +18,17 @@ const TABS = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  const router = useRouter();
-  const current = TABS.find((t) => pathname.startsWith(t.value))?.value ?? false;
+  const fromPath = TABS.find((t) => pathname.startsWith(t.value))?.value ?? false;
+
+  // The tap must highlight before the navigation commits, or the bottom bar
+  // reads as broken — the exact "unresponsive menu" complaint this fixes.
+  // `pending` is set synchronously on click, so the pressed tab lights up on
+  // the same frame; once the real route lands, `pathname` changes and the
+  // effect below clears it, so the derived `fromPath` takes back over with no
+  // visible handoff.
+  const [pending, setPending] = useState<string | false>(false);
+  useEffect(() => setPending(false), [pathname]);
+  const current = pending || fromPath;
 
   return (
     <Box sx={{ minHeight: '100dvh', pb: 'calc(72px + env(safe-area-inset-bottom))' }}>
@@ -34,11 +44,21 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         <BottomNavigation
           value={current}
-          onChange={(_, value) => router.push(value)}
+          onChange={(_, value) => setPending(value)}
           sx={{ maxWidth: 680, mx: 'auto', bgcolor: 'transparent' }}
         >
           {TABS.map((tab) => (
-            <BottomNavigationAction key={tab.value} label={tab.label} value={tab.value} icon={tab.icon} />
+            <BottomNavigationAction
+              key={tab.value}
+              label={tab.label}
+              value={tab.value}
+              icon={tab.icon}
+              // A real <Link>, not router.push in the handler above — this is
+              // what gives Next's viewport prefetch, so the destination's
+              // payload is usually already on the device before the tap lands.
+              component={Link}
+              href={tab.value}
+            />
           ))}
         </BottomNavigation>
       </Paper>

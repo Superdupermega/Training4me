@@ -71,3 +71,57 @@ Full write-up in `06-REDESIGN-PLAN.md` §2; fixes in chunk 14.
 - Six known defects are listed in `chunk-21-polish.md` §1.
 
 **Blocked:** nothing. Run chunk 14 first.
+
+## Chunk 14 — Performance & responsiveness — 2026-08-25
+**Landed:** Every fix from `chunk-14-performance.md` except the bundle-analyzer
+run (no `ANALYZE` script added; numbers below are read straight from the
+`next build` route table instead, which reports the same first-load JS
+figures).
+
+- `vercel.json` pins the `arn1` (Stockholm) region, next to the Supabase
+  project, instead of Vercel's Hobby default `iad1` (Washington DC).
+- `AppShell`'s bottom nav now renders real `next/link`s (viewport prefetch)
+  and highlights the tapped tab from local state set synchronously on click,
+  reconciled against the real pathname once navigation commits — no more
+  dead tap before a full server round-trip.
+- `loading.tsx` added for `/plan`, `/history`, `/settings`, `/session/[id]`,
+  each rendering a page-shaped `Skeleton` from the new
+  `src/components/skeletons/`.
+- `db()` in `src/server/db.ts` now returns a memoised client instead of
+  constructing one per call.
+- Every read in `src/server/repo.ts` is wrapped in `unstable_cache`, tagged
+  `profile` / `program` / `sessions` / `logs`; every mutation in
+  `src/server/actions.ts` now calls `revalidateTag` for what it touched,
+  replacing the old `revalidatePath` calls.
+- `/plan` fetches profile and program in parallel instead of serially, and
+  `/session/[id]` skips the logged-sets query entirely for an already-completed
+  session (it returns before ever needing `initialLogged`).
+- `src/middleware.ts`: the derived PIN token is cached per Edge isolate
+  instead of re-hashed every request; the matcher now excludes all of
+  `_next/*`, `/unlock` itself, and `*.svg`, not just `_next/static`/`_next/image`.
+- Fixed in passing (chunk-21's defect #4, pulled forward since it sat in the
+  same function being touched): `Math.max(...sessions.map(...))` on `/plan`
+  was `-Infinity` when a program had zero sessions.
+- ESLint now bans a bare `import { X } from '@mui/material'` /
+  `'@mui/icons-material'` — every existing import was already the deep,
+  tree-shakeable form; this keeps it that way.
+
+**First-load JS, from `next build`** (baseline for chunk 21's budget):
+`/` 147 kB · `/history` 152 kB · `/plan` 161 kB · `/settings` 180 kB ·
+`/session/[id]` 213 kB. All above chunk 21's eventual per-route targets, as
+expected before the route/bundle work in chunks 15 and 21.
+
+**Deviated:** `force-dynamic` was not removed anywhere — see `DECISIONS.md`
+2026-08-25. `unstable_cache` could not be exercised against live Supabase data
+in this sandbox (its network allowlist blocks `evlxbewvsgrlncvtagmf.supabase.co`
+outright), so caching correctness rests on the type/build/test suite passing
+plus manual review, not an observed cache hit in a running instance.
+
+**Next chunk must know:** `repo.ts` now exports `TAGS` — chunk 15+ code adding
+new repo reads/writes should use the existing tags rather than inventing
+path-based revalidation again. `AppShell`'s tab list and its prefetch/highlight
+pattern is exactly what chunk 15 generalises into `DESTINATIONS` for the
+five-destination shell — reuse the click/pathname reconciliation approach.
+
+**Blocked:** nothing. `pnpm test` (213/213), `pnpm lint`, `pnpm typecheck`,
+`pnpm build` all clean.

@@ -16,10 +16,11 @@ import { getActiveProgram, getProfile, listSessions } from '@/server/repo';
 export const dynamic = 'force-dynamic';
 
 export default async function PlanPage() {
-  const profile = await getProfile();
+  // Independent reads, fetched together — profile and the active program
+  // don't depend on each other, so there is no reason to pay for them serially.
+  const [profile, program] = await Promise.all([getProfile(), getActiveProgram()]);
   if (!profile.onboardedAt) redirect('/onboarding');
 
-  const program = await getActiveProgram();
   if (!program) {
     return (
       <AppShell>
@@ -41,7 +42,7 @@ export default async function PlanPage() {
   const nextSession = sessions.find((s) => s.scheduledDate >= today && s.status === 'planned');
   const featured = todaySession ?? nextSession;
   const currentWeek = featured?.weekNumber
-    ?? Math.max(...sessions.map((s) => s.weekNumber));
+    ?? (sessions.length ? Math.max(...sessions.map((s) => s.weekNumber)) : 1);
   const weekSessions = sessions.filter((s) => s.weekNumber === currentWeek);
   const allDone = sessions.every((s) => s.status === 'completed' || s.status === 'skipped');
 
