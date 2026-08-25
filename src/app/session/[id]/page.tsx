@@ -8,6 +8,7 @@ import { SessionPlayer } from '@/components/session/SessionPlayer';
 import type { LoggedValue } from '@/components/session/SetRow';
 import { TopBar } from '@/components/nav/TopBar';
 import type { PainArea } from '@/core/types';
+import { exerciseContext } from '@/server/exerciseContext';
 import { getLoggedSets, getProfile, getSession } from '@/server/repo';
 
 export const dynamic = 'force-dynamic';
@@ -33,7 +34,10 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
 
   // Only a live session needs its logged sets replayed into the player —
   // a finished one returns above without ever issuing this query.
-  const logs = await getLoggedSets(id);
+  const exerciseIds = [...new Set(
+    session.blocks.flatMap((b) => b.exercises.map((e) => e.exerciseId)),
+  )];
+  const [logs, contexts] = await Promise.all([getLoggedSets(id), exerciseContext(exerciseIds)]);
   const initialLogged: Record<string, LoggedValue> = {};
   for (const log of logs) {
     initialLogged[`${log.block_letter}:${log.slot}:${log.set_number}`] = {
@@ -51,6 +55,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
       session={session}
       increment={profile.microPlates ? 1.25 : 2.5}
       initialLogged={initialLogged}
+      contexts={contexts}
     />
   );
 }

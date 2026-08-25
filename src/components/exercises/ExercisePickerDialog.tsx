@@ -14,10 +14,13 @@ import type { TransitionProps } from '@mui/material/transitions';
 import TextField from '@mui/material/TextField';
 import Toolbar from '@mui/material/Toolbar';
 import Typography from '@mui/material/Typography';
-import { forwardRef, useMemo, useState } from 'react';
+import { forwardRef, useEffect, useMemo, useState } from 'react';
+import { summariseContext } from './ExerciseContext';
 import { EXERCISES } from '@/core/library/exercises';
 import { browseGroupsFor } from '@/core/library/query';
 import { GROUP_LABEL, MUSCLE_GROUPS, MUSCLE_LABEL, type MuscleGroup } from '@/core/library/muscles';
+import { getExerciseContexts } from '@/server/actions';
+import type { ExerciseContext } from '@/server/exerciseContext';
 import type { Exercise } from '@/core/types';
 
 const Transition = forwardRef(function Transition(
@@ -37,6 +40,8 @@ export function ExercisePickerDialog({ open, onClose, onPick }: Props) {
   const [query, setQuery] = useState('');
   const [group, setGroup] = useState<MuscleGroup | null>(null);
 
+  const [contexts, setContexts] = useState<Record<string, ExerciseContext>>({});
+
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     return EXERCISES.filter((ex) => {
@@ -45,6 +50,17 @@ export function ExercisePickerDialog({ open, onClose, onPick }: Props) {
       return true;
     }).slice(0, 100);
   }, [query, group]);
+
+  // "What did I do last time" on every visible row — one batched call per
+  // settled filter, not one query per row (that would undo chunk 14).
+  useEffect(() => {
+    if (!open || filtered.length === 0) return;
+    const ids = filtered.map((ex) => ex.id);
+    const timer = setTimeout(() => {
+      getExerciseContexts(ids).then((result) => { if (result.ok) setContexts(result.data!); });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [open, filtered]);
 
   return (
     <Dialog fullScreen open={open} onClose={onClose} slots={{ transition: Transition }}>
@@ -78,14 +94,19 @@ export function ExercisePickerDialog({ open, onClose, onPick }: Props) {
         {filtered.length === 0 ? (
           <Typography color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>Nothing matches.</Typography>
         ) : (
-          filtered.map((ex) => (
-            <ListItemButton key={ex.id} onClick={() => onPick(ex)} sx={{ py: 1.25, px: 2 }}>
-              <ListItemText
-                primary={ex.name}
-                secondary={[...ex.primaryMuscles].map((m) => MUSCLE_LABEL[m]).join(', ')}
-              />
-            </ListItemButton>
-          ))
+          filtered.map((ex) => {
+            const muscles = [...ex.primaryMuscles].map((m) => MUSCLE_LABEL[m]).join(', ');
+            const contextLine = summariseContext(contexts[ex.id]);
+            return (
+              <ListItemButton key={ex.id} onClick={() => onPick(ex)} sx={{ py: 1.25, px: 2 }}>
+                <ListItemText
+                  primary={ex.name}
+                  secondary={contextLine ? `${muscles} · ${contextLine}` : muscles}
+                  slotProps={{ secondary: { noWrap: true } }}
+                />
+              </ListItemButton>
+            );
+          })
         )}
       </Box>
     </Dialog>

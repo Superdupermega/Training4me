@@ -13,8 +13,11 @@ import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
 import { useEffect, useState } from 'react';
+import { ExerciseContextPanel } from '@/components/exercises/ExerciseContext';
 import { getExercise } from '@/core/library/exercises';
 import { BLOCK_KINDS, type BlockKind } from '@/core/types';
+import { getExerciseContexts } from '@/server/actions';
+import type { ExerciseContext } from '@/server/exerciseContext';
 import type { EditableItem } from './editable';
 
 const BLOCK_KIND_LABEL: Record<BlockKind, string> = {
@@ -46,7 +49,20 @@ function tempoHint(tempo: string): string {
 
 export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
   const [draft, setDraft] = useState<EditableItem | null>(item);
+  const [context, setContext] = useState<ExerciseContext | undefined>(undefined);
   useEffect(() => setDraft(item), [item]);
+
+  // "What did I do last time, or what does my training max say to expect" —
+  // fetched fresh whenever a different exercise's sheet opens.
+  useEffect(() => {
+    setContext(undefined);
+    if (!item) return;
+    let cancelled = false;
+    getExerciseContexts([item.exerciseId], { percentTm: item.percentTm ?? undefined }).then((result) => {
+      if (!cancelled && result.ok) setContext(result.data![item.exerciseId]);
+    });
+    return () => { cancelled = true; };
+  }, [item]);
 
   if (!draft) return null;
   const exercise = getExercise(draft.exerciseId);
@@ -57,6 +73,7 @@ export function ItemEditorSheet({ open, item, onClose, onSave }: Props) {
       <DialogTitle>{exercise.name}</DialogTitle>
       <DialogContent>
         <Stack spacing={2.5} sx={{ pt: 1 }}>
+          <ExerciseContextPanel context={context} />
           <TextField
             select label="Block" size="small" value={draft.blockKind}
             onChange={(e) => set({ blockKind: e.target.value as BlockKind })}

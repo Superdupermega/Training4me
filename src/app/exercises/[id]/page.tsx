@@ -10,11 +10,13 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
+import { ExerciseContextPanel } from '@/components/exercises/ExerciseContext';
 import { STYLE_LABEL, TIER_LABEL } from '@/components/exercises/labels';
 import { EQUIPMENT_LABEL } from '@/core/library/equipment';
 import { BY_ID, getExercise } from '@/core/library/exercises';
 import { GROUP_LABEL, MUSCLE_LABEL } from '@/core/library/muscles';
 import { browseGroupsFor } from '@/core/library/query';
+import { exerciseContext } from '@/server/exerciseContext';
 import { historyForExercise } from '@/server/repo';
 
 export const dynamic = 'force-dynamic';
@@ -32,14 +34,8 @@ export default async function ExerciseDetailPage({ params }: { params: Promise<{
   if (!BY_ID.has(id)) notFound();
   const ex = getExercise(id);
   const groups = browseGroupsFor(ex);
-  const history = await historyForExercise(id);
-
-  const best = history.reduce<{ weightKg: number; reps: number } | null>((acc, log) => {
-    if (log.weight_kg == null) return acc;
-    const kg = Number(log.weight_kg);
-    if (!acc || kg > acc.weightKg) return { weightKg: kg, reps: log.reps ?? 0 };
-    return acc;
-  }, null);
+  const [history, contexts] = await Promise.all([historyForExercise(id), exerciseContext([id])]);
+  const context = contexts[id];
 
   return (
     <AppShell title={ex.name} backHref="/exercises">
@@ -92,14 +88,18 @@ export default async function ExerciseDetailPage({ params }: { params: Promise<{
             ))}
           </Stack>
 
-          {best && (
-            <Card variant="outlined" sx={{ p: 2 }}>
-              <Typography variant="overline" color="text.secondary">Best set logged</Typography>
-              <Typography variant="h3" className="tnum" sx={{ mt: 0.5 }}>
-                {best.weightKg} kg{best.reps ? ` × ${best.reps}` : ''}
+          <Card variant="outlined" sx={{ p: 2 }}>
+            <Typography variant="overline" color="text.secondary">Your numbers</Typography>
+            <Box sx={{ mt: 1 }}>
+              <ExerciseContextPanel context={context} />
+            </Box>
+            {context?.best && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+                Best estimated 1RM: {context.best.e1rm} kg (from {context.best.weightKg} kg × {context.best.reps}
+                {' '}on {context.best.date})
               </Typography>
-            </Card>
-          )}
+            )}
+          </Card>
 
           <Box>
             <Typography variant="overline" color="text.secondary">History</Typography>

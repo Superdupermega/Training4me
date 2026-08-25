@@ -13,7 +13,8 @@ import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import Link from 'next/link';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { summariseContext } from './ExerciseContext';
 import { EQUIPMENT_LABEL } from '@/core/library/equipment';
 import { EXERCISES } from '@/core/library/exercises';
 import { browseGroupsFor } from '@/core/library/query';
@@ -22,6 +23,8 @@ import {
   type ExerciseStyle, type MuscleGroup,
 } from '@/core/library/muscles';
 import type { Equipment, Exercise } from '@/core/types';
+import { getExerciseContexts } from '@/server/actions';
+import type { ExerciseContext } from '@/server/exerciseContext';
 import { STYLE_LABEL } from './labels';
 
 function matches(ex: Exercise, query: string): boolean {
@@ -35,15 +38,13 @@ function equipmentSummary(ex: Exercise): string {
   return ex.equipment.filter((e) => e !== 'none').map((e) => EQUIPMENT_LABEL[e]).join(' · ');
 }
 
-function Row({ ex }: { ex: Exercise }) {
+function Row({ ex, context }: { ex: Exercise; context: ExerciseContext | undefined }) {
   const muscles = [...ex.primaryMuscles, ...ex.secondaryMuscles].map((m) => MUSCLE_LABEL[m]).join(', ');
+  const contextLine = summariseContext(context);
+  const secondary = [muscles, equipmentSummary(ex), contextLine].filter(Boolean).join(' · ');
   return (
     <ListItemButton component={Link} href={`/exercises/${ex.id}`} sx={{ py: 1.25, px: 2 }}>
-      <ListItemText
-        primary={ex.name}
-        secondary={`${muscles}${equipmentSummary(ex) ? ` · ${equipmentSummary(ex)}` : ''}`}
-        slotProps={{ secondary: { noWrap: true } }}
-      />
+      <ListItemText primary={ex.name} secondary={secondary} slotProps={{ secondary: { noWrap: true } }} />
     </ListItemButton>
   );
 }
@@ -84,6 +85,16 @@ export function ExerciseBrowser({ myEquipment }: Props) {
     }
     return byGroup;
   }, [filtered, query, group]);
+
+  const [contexts, setContexts] = useState<Record<string, ExerciseContext>>({});
+  useEffect(() => {
+    const ids = filtered.slice(0, 150).map((ex) => ex.id);
+    if (ids.length === 0) return;
+    const timer = setTimeout(() => {
+      getExerciseContexts(ids).then((result) => { if (result.ok) setContexts(result.data!); });
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [filtered]);
 
   return (
     <Stack spacing={1.5}>
@@ -135,7 +146,7 @@ export function ExerciseBrowser({ myEquipment }: Props) {
               <ListSubheader sx={{ px: 2, bgcolor: 'background.default' }}>
                 {GROUP_LABEL[g]} · {grouped.get(g)!.length}
               </ListSubheader>
-              {grouped.get(g)!.map((ex) => <Row key={ex.id} ex={ex} />)}
+              {grouped.get(g)!.map((ex) => <Row key={ex.id} ex={ex} context={contexts[ex.id]} />)}
             </Box>
           ))
         ) : filtered.length === 0 ? (
@@ -143,7 +154,7 @@ export function ExerciseBrowser({ myEquipment }: Props) {
             Nothing matches. Try a different search or turn off &ldquo;Only what I have&rdquo;.
           </Typography>
         ) : (
-          filtered.map((ex) => <Row key={ex.id} ex={ex} />)
+          filtered.map((ex) => <Row key={ex.id} ex={ex} context={contexts[ex.id]} />)
         )}
       </Box>
     </Stack>

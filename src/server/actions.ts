@@ -8,6 +8,7 @@ import { PROFILE_EQUIPMENT } from '@/core/library/equipment';
 import { detectPRs } from '@/core/progression/prs';
 import { applyReadiness } from '@/core/progression/readiness';
 import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness } from '@/core/types';
+import { exerciseContext, type ExerciseContext } from './exerciseContext';
 import { COOKIE_MAX_AGE, COOKIE_NAME, deriveToken, safeEqual } from './lock';
 import * as repo from './repo';
 import { TAGS } from './repo';
@@ -328,6 +329,27 @@ export async function duplicateActiveProgramAsRoutine(name: string): Promise<Res
     await routines.saveRoutineDays(routineId, days);
     revalidateTag(ROUTINE_TAG);
     return { ok: true, data: { routineId } };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------- exercise context (chunk 19)
+
+/**
+ * "What did I do last time, or what does my training max say to expect" —
+ * batched (one call, many ids) so the exercise picker can show a line on
+ * every visible row without an N+1. Read-only, but a server action rather
+ * than a page-level fetch because the picker and the item editor are client
+ * components that need this on demand, not at page load.
+ */
+export async function getExerciseContexts(
+  exerciseIds: string[],
+  opts?: { percentTm?: number; increment?: number },
+): Promise<Result<Record<string, ExerciseContext>>> {
+  try {
+    const data = await exerciseContext(exerciseIds, opts);
+    return { ok: true, data };
   } catch (err) {
     return fail(err);
   }

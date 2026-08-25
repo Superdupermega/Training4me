@@ -19,9 +19,11 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { minutes } from '@/components/format';
 import { TopBar } from '@/components/nav/TopBar';
+import { ExerciseContextLine } from '@/components/exercises/ExerciseContext';
 import { getExercise } from '@/core/library/exercises';
 import type { Readiness, SessionBlock } from '@/core/types';
 import { beginSession, finishSession, logSets } from '@/server/actions';
+import type { ExerciseContext } from '@/server/exerciseContext';
 import type { LoggedSetRow, SessionRow } from '@/server/repo';
 import { ReadinessDialog } from './ReadinessDialog';
 import { RestTimer } from './RestTimer';
@@ -35,9 +37,10 @@ interface Props {
   session: SessionRow;
   increment: number;
   initialLogged: Record<string, LoggedValue>;
+  contexts?: Record<string, ExerciseContext>;
 }
 
-export function SessionPlayer({ session, increment, initialLogged }: Props) {
+export function SessionPlayer({ session, increment, initialLogged, contexts }: Props) {
   const router = useRouter();
   const [logged, setLogged] = useState<Record<string, LoggedValue>>(initialLogged);
   const [blocks, setBlocks] = useState<SessionBlock[]>(session.blocks);
@@ -198,6 +201,7 @@ export function SessionPlayer({ session, increment, initialLogged }: Props) {
                         <Chip size="small" variant="outlined" label={be.tempo} />
                       </Stack>
                       <Typography variant="body2" color="text.secondary">{be.cue}</Typography>
+                      <ExerciseContextLine context={contexts?.[be.exerciseId]} />
                     </Stack>
                     {be.sets.map((set) => {
                       const id = key(block.letter, be.slot, set.setNumber);

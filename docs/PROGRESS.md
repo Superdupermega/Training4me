@@ -422,3 +422,54 @@ and callable client-side is a pattern chunk 20 can reuse for any other
 core-logic-driven live preview.
 
 **Blocked:** nothing.
+
+## Chunk 19 — "Last time / expected from your 1RM" — 2026-08-25
+**Landed:** the batched context function the plan asked for, wired into
+all four places it names, plus the two-picker screens that turned out to
+need it too.
+
+- `src/server/exerciseContext.ts`: `exerciseContext(exerciseIds, opts?)` —
+  **one** query for the whole batch (`t4m_logged_set` where
+  `exercise_id in (...)`), folded in JS into per-exercise `last` (most
+  recent session's sets, with the session title via a second small batched
+  query), `best` (highest Epley e1RM across all logged sets, not just the
+  heaviest raw weight), `trainingMax` (direct or anchor-derived, via the
+  existing `resolveTrainingMax`, with the anchor id kept as `derivedFrom`),
+  and `expected` (`trainingMax × percent`, rounded to the increment — the
+  exact formula `prescriptionFor` uses, reused not reimplemented). No
+  training max on file → `expected` is `null`, never a fabricated number.
+  Wrapped once in `unstable_cache` at module scope (the documented pattern
+  — a sorted id array is an ordinary argument Next serialises into the
+  cache key), tagged `logs`/`profile`.
+- `getExerciseContexts` action in `actions.ts` — the read-only RPC client
+  components call, since the picker and the item editor need this on
+  demand, not at page load.
+- `src/components/exercises/ExerciseContext.tsx`: `summariseContext` (the
+  priority-ordered one-liner: last time beats expected beats "no history
+  yet"), `ExerciseContextLine` (compact), `ExerciseContextPanel` (both
+  numbers plus the delta between them).
+- Wired into all four places the plan names, batched everywhere a list is
+  involved (250ms-debounced on the visible/filtered set, never per-row):
+  exercise detail page (replaces the ad-hoc "best set" card with the real
+  panel plus e1RM), the session player (a line above each exercise's first
+  set), the builder's item editor (fetches fresh whenever a different
+  exercise's sheet opens, using that item's own chosen percent), and both
+  exercise pickers (`ExerciseBrowser`'s main list and
+  `ExercisePickerDialog`'s builder picker).
+- `exerciseContext.test.ts`: proves `expected.weightKg`'s formula agrees
+  with `prescriptionFor`'s real output for the same training max/percent/
+  increment, at both a normal week and the peak week where rounding matters
+  most — see Deviated for why this tests the formula rather than the live
+  function.
+
+**Verified:** 238 tests (236 → +2), lint, typecheck, build all clean.
+`/exercises/back-squat` compiles and routes correctly against a dev server
+(same sandbox network restriction as every earlier chunk for the live data
+path).
+
+**Deviated:** two, both in `DECISIONS.md` — `expected` defaults to 75% (not
+a specific wave percentage, since most call sites have no percent in mind)
+and the DB-touching half of `exerciseContext` has no live test, consistent
+with the rest of `src/server`.
+
+**Blocked:** nothing.
