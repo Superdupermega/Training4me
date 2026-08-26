@@ -7,7 +7,9 @@ import { generateProgram } from '@/core/generator/generateProgram';
 import { PROFILE_EQUIPMENT } from '@/core/library/equipment';
 import { detectPRs } from '@/core/progression/prs';
 import { applyReadiness } from '@/core/progression/readiness';
-import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness } from '@/core/types';
+import type {
+  Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness, SessionBlock,
+} from '@/core/types';
 import * as analytics from './analytics';
 import { requireUnlocked } from './authGuard';
 import { exerciseContext, type ExerciseContext } from './exerciseContext';
@@ -178,6 +180,26 @@ async function detectAndRecordPRs(sets: repo.LoggedSetRow[]): Promise<void> {
   if (prs.length === 0) return;
   await repo.insertPRs(prs.map((p) => ({ ...p, sessionId: p.sessionId ?? sets[0]!.sessionId })));
   revalidateTag(TAGS.logs);
+}
+
+/**
+ * Persists the RPE ≥ 9.5 backoff SessionPlayer applies live to future sets
+ * in the block still ahead. Before this existed, the reduced weights lived
+ * only in client React state (`SessionPlayer.tsx`'s `blocks`) — a reload
+ * mid-session (phone died, browser evicted the tab, a check on another
+ * page) brought back the original heavy prescription with the backoff
+ * silently forgotten, even though the README sells this as a headline
+ * adaptation. See docs/07-PRODUCTION-REVIEW.md #10.
+ */
+export async function applyAutoregulation(sessionId: string, blocks: SessionBlock[]): Promise<Result> {
+  try {
+    await requireUnlocked();
+    await repo.updateSession(sessionId, { blocks, autoregulated: true });
+    revalidateTag(TAGS.sessions);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
 }
 
 export async function finishSession(sessionId: string, actualSec: number, notes?: string): Promise<Result> {
@@ -423,7 +445,8 @@ export async function getExerciseContexts(
 export async function getE1rmSeries(exerciseId: string): Promise<Result<Awaited<ReturnType<typeof analytics.e1rmSeries>>>> {
   try {
     await requireUnlocked();
-    const data = await analytics.e1rmSeries(exerciseId);
+    const profile = await repo.getProfile();
+    const data = await analytics.e1rmSeries(exerciseId, profile.timezone);
     return { ok: true, data };
   } catch (err) {
     return fail(err);

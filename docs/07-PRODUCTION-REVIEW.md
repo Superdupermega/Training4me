@@ -14,6 +14,78 @@ is, why it matters, and how to know it is fixed.
 
 ---
 
+## Status as of 2026-08-26
+
+Every item below has been worked since this review was written. Summary,
+so this doesn't need a line-by-line re-read to know what's left:
+
+- **Resolved:** #1, #3, #4, #5, #6, #7 (see follow-up note below), #8, #9,
+  #10, #11, #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #23, #25, #27,
+  #28.
+- **Partially resolved:**
+  - **#7** — the eight "what date is today" call sites were fixed first;
+    historical bucketing (weekly volume, e1RM series, the heatmap) bucketed
+    by the UTC instant instead of the athlete's local calendar day was
+    called out as a deliberate, separate follow-up at the time. That
+    follow-up is now also done (`isoWeekStart`, `weeklyVolume`, `e1rmSeries`,
+    `calendarActivity` all take a timezone).
+  - **#22** — `/session/[id]` now lazy-loads `ReadinessDialog` and
+    `RestTimer` (neither is needed for the first paint), a real if modest
+    win. The actual cause — the ~123 kB exercise library imported directly
+    into client components (`ExerciseBrowser`, `ExercisePickerDialog`, and
+    everything that calls `getExercise`) — is unchanged. Fixing that for
+    real means the data-layer restructuring the original item already
+    described (a slim server-side index, detail fetched on demand); that's
+    a larger, cross-cutting change than a same-session fix should risk
+    pushing straight to production untested against real usage.
+  - **#26** — `@vercel/analytics` and Speed Insights shipped earlier. A
+    client-side crash now also reaches Vercel's own function logs (a new
+    `POST /api/log-client-error` route, called from `error.tsx` and
+    `global-error.tsx`) instead of only the one browser's console — but
+    this is a log line, not an error-reporting *service* (no Sentry, no
+    alerting). Deliberately a route handler rather than a server action:
+    both boundary files wrap every route including `/unlock`, and a
+    `'use server'` export imported there would reopen the exact
+    worker-isolation shape #1's regression guard exists to catch.
+- **Blocked on you** — both are fully built; each needs one manual step in
+  a dashboard before it does anything (see `docs/08-RLS-TIGHTENING.md` and
+  `docs/09-PUSH-NOTIFICATIONS.md` for the exact steps):
+  - **#2** — set `SUPABASE_SECRET_KEY` in Vercel, confirm the app still
+    works, then apply the ready-to-run migration that drops the `anon`
+    grant from every `t4m_` table.
+  - **#24** — set `VAPID_PRIVATE_KEY` and `CRON_SECRET` in Vercel.
+- **Deliberately not attempted**, each for a reason worth knowing rather
+  than a corner quietly cut:
+  - A **dev-only seed script** (would help exercise the analysis screens'
+    populated states, mentioned in passing under #16/#20's follow-ups) —
+    writing one means guessing at exact column shapes for every `t4m_`
+    table with no live database in this environment to run it against and
+    catch a mistake. Shipping unverified database-writing code is a worse
+    trade than not shipping it.
+  - **A UI for `t4m_custom_exercise`** — the table has existed since chunk
+    18 with no server functions or UI built against it yet
+    (`docs/DECISIONS.md`, chunk 17). Building it properly means threading a
+    DB-backed exercise into every place the static library is read today
+    (the browser, both pickers, the builder, session player, analytics'
+    muscle-group attribution) without breaking `src/core`'s pure-no-database
+    boundary — a real feature, not a fix, and too large to rush.
+  - **Making CI actually gate deploys** — `.github/workflows/ci.yml` runs
+    and reports on every push, but Vercel's Git integration still deploys
+    on push regardless of that check's result. Making it truly block a bad
+    deploy needs either Vercel's paid Checks/Deployment Protection feature
+    or a homemade `ignoreCommand` that polls GitHub's check-run API at
+    build time — which races the two triggers (GitHub Actions and the
+    Vercel build both start on the same push) and risks silently skipping
+    good deploys as often as it blocks bad ones. Not worth shipping
+    something fragile in the one place a mistake means production never
+    updates again.
+  - **Scheduled backups** on top of the on-demand export (#16) — needs a
+    storage or email destination (Vercel Blob, a transactional-email
+    provider) that means a new account/credential, the same shape as #2
+    and #24's blockers.
+
+---
+
 ## P0 — Fix before the next session you log
 
 ### 1. The PIN gate is bypassable. Every server action is reachable without it.

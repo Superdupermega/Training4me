@@ -12,10 +12,12 @@ vi.mock('next/navigation', () => ({
 const beginSession = vi.fn();
 const finishSession = vi.fn();
 const logSets = vi.fn();
+const applyAutoregulation = vi.fn().mockResolvedValue({ ok: true });
 vi.mock('@/server/actions', () => ({
   beginSession: (...args: unknown[]) => beginSession(...args),
   finishSession: (...args: unknown[]) => finishSession(...args),
   logSets: (...args: unknown[]) => logSets(...args),
+  applyAutoregulation: (...args: unknown[]) => applyAutoregulation(...args),
 }));
 
 // The outbox has its own dedicated tests (outbox.test.ts) against a fake
@@ -58,6 +60,58 @@ describe('SessionPlayer finish flow', () => {
     beginSession.mockReset();
     finishSession.mockReset();
     logSets.mockReset();
+    applyAutoregulation.mockClear();
+  });
+
+  function twoSetMainBlock() {
+    return [{
+      letter: 'A', kind: 'main', name: 'Main lift', estimatedSec: 600,
+      exercises: [{
+        slot: 'A1', exerciseId: 'back-squat', tempo: '20X1', cue: 'Brace and drive.',
+        sets: [
+          { setNumber: 1, kind: 'working', reps: 5, weightKg: 100, restSec: 0, estimatedSec: 30 },
+          { setNumber: 2, kind: 'working', reps: 5, weightKg: 100, restSec: 0, estimatedSec: 30 },
+        ],
+      }],
+    }] as SessionRow['blocks'];
+  }
+
+  it('persists the RPE backoff to the server, not just client state (#10)', async () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoSetMainBlock() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Set 1'));
+    fireEvent.click(screen.getByLabelText('RPE 9.5'));
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+
+    await waitFor(() => expect(applyAutoregulation).toHaveBeenCalledTimes(1));
+    const [sessionId, sentBlocks] = applyAutoregulation.mock.calls[0] as [string, SessionRow['blocks']];
+    expect(sessionId).toBe('s1');
+    // 100kg * 0.95, rounded to the nearest 2.5 — the first-offense factor.
+    expect(sentBlocks[0]!.exercises[0]!.sets[1]!.weightKg).toBe(95);
+  });
+
+  it('picks up a prior reload-surviving backoff and goes straight to the 10% cut (#10)', async () => {
+    // `autoregulated: true` is what applyAutoregulation now sets — this
+    // proves a session reloaded after an earlier backoff doesn't restart
+    // the escalation from scratch (the toast for a *second* hard set says
+    // "twice", not "backing off 5%").
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoSetMainBlock(), autoregulated: true })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Set 1'));
+    fireEvent.click(screen.getByLabelText('RPE 9.5'));
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+
+    expect(await screen.findByText(/twice at the limit/)).toBeInTheDocument();
   });
 
   it('navigates away once finishSession actually succeeds', async () => {

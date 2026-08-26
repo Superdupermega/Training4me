@@ -661,3 +661,91 @@ performance causes addressed, an advanced-but-usable log/analysis page on
 `/profile`, and last-time-or-expected-load shown wherever an exercise is
 picked) has shipped and is covered by the definition of done in
 `06-REDESIGN-PLAN.md` §8. No further chunks are planned.
+
+## Production review fixes — 2026-08-25/26
+**Landed:** `docs/07-PRODUCTION-REVIEW.md`'s 28 findings were worked across
+a run of commits after chunk 21 closed (the PIN-gate/action-isolation fix,
+RLS-tightening prep, the offline-outbox and PR-detection data-loss fixes,
+timezone-correct "today", wake lock/rest-timer/bundle fixes, session
+view/edit, data export, plate math/tap-to-edit-weight/bodyweight tracking,
+history pagination, monitoring + UI tests, push-notification reminders, and
+a premium visual pass). This entry exists mainly to close the gap this file
+had with that work — see the individual commit messages and
+`docs/07-PRODUCTION-REVIEW.md`'s new "Status as of 2026-08-26" section
+(added below) for the real detail; not reconstructing chunk-by-chunk notes
+here after the fact.
+
+**Next entry must know:** the doc drift itself was one of the review's own
+findings (#12 in the "what have we missed" follow-up below) — this file had
+gone stale since chunk 21 while 14 more commits landed. Keep appending here
+per-session going forward, not just per-chunk.
+
+**Blocked:** #2 (RLS tightening) and #24 (push notifications) both shipped
+code-complete but inert, each waiting on one manual dashboard step — see
+`docs/08-RLS-TIGHTENING.md` / `docs/09-PUSH-NOTIFICATIONS.md`.
+
+## "What have we missed" follow-up — 2026-08-26
+**Landed:** a second pass over `docs/07-PRODUCTION-REVIEW.md` against the
+then-current `main` (`a676e2c`) turned up one still-open correctness bug,
+one still-open scope gap, and confirmed the rest of the 28 findings were
+genuinely closed. Fixed in this session:
+
+- **#10 — the RPE backoff didn't survive a reload.** `SessionPlayer.tsx`'s
+  auto-back-off (RPE ≥ 9.5 drops the rest of the lift 5%, twice drops it
+  10%) lived only in client React state. A new `applyAutoregulation` action
+  persists the adjusted `blocks` to the session row (and sets the existing
+  `autoregulated` column) the moment a backoff fires; `hardSets` reseeds
+  from `session.autoregulated` on mount rather than always starting at 0.
+  The backoff factor only ever depends on "has this happened before"
+  (`>= 2` vs `< 2`, never the exact count), so seeding to 1 whenever
+  `autoregulated` is already true reproduces the correct next factor
+  regardless of how many times it fired before the reload — not an
+  approximation, a complete fix given the boolean the schema already has.
+  Two new `SessionPlayer.test.tsx` cases cover it.
+- **#7 (follow-up) — historical bucketing was still UTC.** The original #7
+  fix scoped out day-bucketing of historical rows on purpose (documented in
+  `analytics.ts`'s own comment). That follow-up is done now: `isoWeekStart`,
+  `weeklyVolume`, `e1rmSeries`, and `calendarActivity` all take a timezone
+  and bucket by the athlete's local calendar day, not the UTC instant
+  `created_at` is stored as. New `analytics.test.ts` cases reproduce the
+  exact failure mode (a late Sunday-evening set landing in the wrong week)
+  and prove the timezone parameter, not just the default, works.
+- **#22 (partial) — `/session/[id]`'s bundle.** `ReadinessDialog` and
+  `RestTimer` are now `next/dynamic`-loaded (`ssr: false`) rather than
+  eagerly bundled — both are conditionally rendered, never needed for first
+  paint. Measured, not assumed: this route's own JS dropped from 18.5 kB to
+  12.8 kB and First Load JS from 235 kB to 228 kB. Still well over the
+  170 kB budget — the actual weight is the ~123 kB exercise library
+  imported directly into client components, which this pass didn't
+  restructure (see `07-PRODUCTION-REVIEW.md`'s status note for why).
+- **#26 (partial) — a client crash had nowhere to go but one browser's
+  console.** `POST /api/log-client-error`, called from `error.tsx` and
+  `global-error.tsx`, logs it server-side instead, so it lands in Vercel's
+  own function logs. A plain route handler, not a server action —
+  `global-error.tsx` wraps every route including `/unlock`, so a
+  `'use server'` export there would have reopened the exact
+  worker-isolation shape `scripts/check-action-isolation.mjs` (#1's
+  regression guard) exists to catch. Still not a real error-reporting
+  service (no alerting, no aggregation) — see #26's own remaining scope.
+
+**Deviated:** three items were assessed and deliberately left undone rather
+than rushed to production — a dev-only seed script (no live database in
+this environment to verify insert shapes against), a UI for
+`t4m_custom_exercise` (a real cross-cutting feature, not a fix — see
+`docs/07-PRODUCTION-REVIEW.md`'s status note), and making CI actually gate
+Vercel deploys (needs either a paid Vercel feature or a homemade
+`ignoreCommand` that races the same push's two triggers). Full reasoning
+for each lives in `07-PRODUCTION-REVIEW.md`'s status section rather than
+duplicated here.
+
+**Verified:** 305 tests (301 → +4: two `SessionPlayer` cases for #10, two
+`analytics` cases for #7), lint, typecheck, and `pnpm build` all clean.
+`pnpm verify:actions` (the #1 regression guard) still passes — confirmed
+deliberately after adding the new `/api/log-client-error` route, since a
+route handler was chosen specifically to not affect it. No live-Supabase
+path could be exercised (same sandbox network restriction as every earlier
+chunk).
+
+**Blocked:** #2 and #24, unchanged from the previous entry — still waiting
+on `SUPABASE_SECRET_KEY`/the RLS migration and
+`VAPID_PRIVATE_KEY`/`CRON_SECRET` respectively.

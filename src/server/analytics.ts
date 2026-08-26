@@ -1,6 +1,6 @@
 import 'server-only';
 import { unstable_cache } from 'next/cache';
-import { today } from '@/core/dates';
+import { DEFAULT_TIMEZONE, isoDateInTimeZone, today } from '@/core/dates';
 import { getExercise } from '@/core/library/exercises';
 import { browseGroupsFor } from '@/core/library/query';
 import { GROUP_LABEL, type MuscleGroup } from '@/core/library/muscles';
@@ -51,23 +51,26 @@ async function loggedSetsSince(days: number): Promise<LoggedRow[]> {
  * logic here: get this wrong and every set in the week is silently
  * misattributed.
  *
- * Known gap, deliberately out of scope for docs/07-PRODUCTION-REVIEW.md #7:
- * `date` here is a `created_at` timestamp already fixed to a UTC instant,
- * and `getDay`/`setDate`/`toISOString` below all operate on it in UTC (a
- * Vercel function's local time), not the athlete's own timezone. A set
- * logged late on a Sunday evening in Stockholm can bucket into the
- * following UTC Monday and be attributed to the wrong week. Fixing this
- * properly means converting to the profile's local calendar day *before*
- * finding that week's Monday, which changes this function's tested
- * contract (and weeklyVolume's, and calendarActivity's) — worth its own
- * pass rather than folding into the #7 fix, which was scoped to the eight
- * "what date is today" call sites, not day-bucketing of historical rows.
+ * `date` is a `created_at` timestamp fixed to a UTC instant. This first
+ * converts it to the athlete's own local calendar day (`isoDateInTimeZone`)
+ * *before* finding that week's Monday, so a set logged late on a Sunday
+ * evening in Stockholm lands in the week that actually started the next
+ * Monday, not the UTC-Sunday one. Previously this operated on the UTC
+ * instant directly (`getDay`/`setDate`/`toISOString`), which is the same
+ * class of bug as #7's eight "what date is today" call sites, just applied
+ * to bucketing historical rows instead — closed here rather than folded
+ * into #7 originally, since it changed this function's (and weeklyVolume's,
+ * and calendarActivity's) tested contract. See docs/07-PRODUCTION-REVIEW.md #7.
  */
-export function isoWeekStart(date: Date): string {
-  const d = new Date(date);
-  const day = (d.getDay() + 6) % 7; // 0 = Monday
-  d.setDate(d.getDate() - day);
-  return d.toISOString().slice(0, 10);
+export function isoWeekStart(date: Date, timeZone: string = DEFAULT_TIMEZONE): string {
+  const localDate = isoDateInTimeZone(date, timeZone);
+  // Anchor at UTC noon so subtracting whole days can't itself be pushed
+  // across a calendar boundary by a timezone's DST transition — same trick
+  // as core/dates.ts's daysFromToday.
+  const anchor = new Date(`${localDate}T12:00:00Z`);
+  const day = (anchor.getUTCDay() + 6) % 7; // 0 = Monday
+  anchor.setUTCDate(anchor.getUTCDate() - day);
+  return isoDateInTimeZone(anchor, timeZone);
 }
 
 export interface WeekBucket {
@@ -78,23 +81,26 @@ export interface WeekBucket {
 }
 
 export const weeklyVolume = unstable_cache(
-  async (weeks = 8): Promise<WeekBucket[]> => {
+  async (weeks = 8, timezone: string = DEFAULT_TIMEZONE): Promise<WeekBucket[]> => {
     const rows = await loggedSetsSince(weeks * 7);
     const buckets = new Map<string, WeekBucket>();
     for (const row of rows) {
-      const weekStart = isoWeekStart(new Date(row.created_at));
+      const weekStart = isoWeekStart(new Date(row.created_at), timezone);
       const bucket = buckets.get(weekStart) ?? { weekStart, label: '', sets: 0, tonnageKg: 0 };
       bucket.sets += 1;
       bucket.tonnageKg += Number(row.weight_kg ?? 0) * (row.reps ?? 0);
       buckets.set(weekStart, bucket);
     }
     // Fill every week in the window, including ones with nothing logged —
-    // a gap should read as a gap, not disappear from the axis.
+    // a gap should read as a gap, not disappear from the axis. Anchored on
+    // "today" in `timezone` at noon UTC (daysFromToday's own trick) rather
+    // than the server's raw UTC `new Date()`, so this walks the athlete's
+    // own weeks, not whichever week a UTC clock happens to be in.
     const out: WeekBucket[] = [];
     for (let i = weeks - 1; i >= 0; i -= 1) {
-      const d = new Date();
-      d.setDate(d.getDate() - i * 7);
-      const weekStart = isoWeekStart(d);
+      const d = new Date(`${today(timezone)}T12:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - i * 7);
+      const weekStart = isoWeekStart(d, timezone);
       const existing = buckets.get(weekStart);
       out.push({
         weekStart, label: `W${weeks - i}`,
@@ -139,7 +145,7 @@ export interface E1rmPoint {
 }
 
 export const e1rmSeries = unstable_cache(
-  async (exerciseId: string): Promise<E1rmPoint[]> => {
+  async (exerciseId: string, timezone: string = DEFAULT_TIMEZONE): Promise<E1rmPoint[]> => {
     const { data, error } = await db()
       .from('t4m_logged_set').select('reps, weight_kg, created_at')
       .eq('exercise_id', exerciseId).eq('skipped', false)
@@ -147,11 +153,14 @@ export const e1rmSeries = unstable_cache(
     if (error) throw new Error(error.message);
     const rows = (data ?? []) as { reps: number | null; weight_kg: string | number | null; created_at: string }[];
 
-    // One point per day — the best set that day, not every set.
+    // One point per day — the best set that day, not every set. Bucketed by
+    // the athlete's own local calendar day, not the UTC instant `created_at`
+    // is stored as (see isoWeekStart above for the same fix on weekly
+    // buckets) — a late-evening set otherwise reads a day early or late.
     const byDate = new Map<string, number>();
     for (const row of rows) {
       if (row.weight_kg == null || !row.reps) continue;
-      const date = row.created_at.slice(0, 10);
+      const date = isoDateInTimeZone(new Date(row.created_at), timezone);
       const e1rm = epley(Number(row.weight_kg), row.reps);
       byDate.set(date, Math.max(byDate.get(date) ?? 0, e1rm));
     }
@@ -210,11 +219,14 @@ export interface CalendarDay {
 }
 
 export const calendarActivity = unstable_cache(
-  async (days = 84): Promise<CalendarDay[]> => {
+  async (days = 84, timezone: string = DEFAULT_TIMEZONE): Promise<CalendarDay[]> => {
     const rows = await loggedSetsSince(days);
     const byDate = new Map<string, number>();
     for (const row of rows) {
-      const date = row.created_at.slice(0, 10);
+      // Local calendar day, matching the tz-aware day grid Heatmap.tsx
+      // builds from `today(timezone)` — otherwise a set logged near
+      // midnight could land one column off from where the grid puts it.
+      const date = isoDateInTimeZone(new Date(row.created_at), timezone);
       byDate.set(date, (byDate.get(date) ?? 0) + 1);
     }
     return [...byDate.entries()].map(([date, value]) => ({ date, value }));

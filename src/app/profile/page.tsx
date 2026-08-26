@@ -31,8 +31,9 @@ export default async function ProfilePage() {
   const [trainingMaxes, prs, weekly, byMuscleGroup, consistencySummary, calendar, strengthSeries, bodyweights] =
     await Promise.all([
       getTrainingMaxes(profile.timezone), listPRs(),
-      weeklyVolume(8), volumeByMuscleGroup(4), consistency(profile.timezone), calendarActivity(84),
-      e1rmSeries(DEFAULT_LIFT), recentBodyweights(),
+      weeklyVolume(8, profile.timezone), volumeByMuscleGroup(4),
+      consistency(profile.timezone), calendarActivity(84, profile.timezone),
+      e1rmSeries(DEFAULT_LIFT, profile.timezone), recentBodyweights(),
     ]);
 
   return (

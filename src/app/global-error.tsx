@@ -18,7 +18,21 @@ export default function GlobalError({
   reset: () => void;
 }) {
   useEffect(() => {
-    console.error(error); // see error.tsx — no reporting is wired up yet.
+    console.error(error);
+    // See error.tsx's own copy of this — same best-effort report to
+    // Vercel's function logs, duplicated rather than shared because this
+    // file must stay import-light (it replaces the root layout, so it's
+    // reachable from /unlock too; see api/log-client-error/route.ts for why
+    // that rules out a server action here).
+    fetch('/api/log-client-error', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        boundary: 'global-error', message: error.message, stack: error.stack,
+        digest: error.digest, url: window.location.href,
+      }),
+      keepalive: true,
+    }).catch(() => {});
   }, [error]);
 
   return (

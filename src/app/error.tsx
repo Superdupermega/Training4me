@@ -23,9 +23,22 @@ export default function ErrorBoundary({
   reset: () => void;
 }) {
   useEffect(() => {
-    // No error reporting wired up yet (docs/07-PRODUCTION-REVIEW.md #26),
-    // so the console is the only trace of this.
     console.error(error);
+    // No real error-reporting service is wired up yet
+    // (docs/07-PRODUCTION-REVIEW.md #26) — this at least gets the crash into
+    // Vercel's own function logs instead of only this one browser's
+    // console. Fire-and-forget: a failed report is never worse than the
+    // crash it's reporting. See api/log-client-error/route.ts for why this
+    // is a plain fetch to a route handler, not a server action.
+    fetch('/api/log-client-error', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        boundary: 'error', message: error.message, stack: error.stack,
+        digest: error.digest, url: window.location.href,
+      }),
+      keepalive: true,
+    }).catch(() => {});
   }, [error]);
 
   return (

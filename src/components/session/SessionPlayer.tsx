@@ -15,6 +15,7 @@ import Paper from '@mui/material/Paper';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
+import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { minutes } from '@/components/format';
@@ -22,13 +23,27 @@ import { TopBar } from '@/components/nav/TopBar';
 import { ExerciseContextLine } from '@/components/exercises/ExerciseContext';
 import { getExercise } from '@/core/library/exercises';
 import type { Readiness, SessionBlock } from '@/core/types';
-import { beginSession, finishSession, logSets } from '@/server/actions';
+import { applyAutoregulation, beginSession, finishSession, logSets } from '@/server/actions';
 import type { ExerciseContext } from '@/server/exerciseContext';
 import type { LoggedSetRow, SessionRow } from '@/server/repo';
-import { ReadinessDialog } from './ReadinessDialog';
-import { RestTimer } from './RestTimer';
 import { SetRow, type LoggedValue } from './SetRow';
 import { drain, enqueue, peek } from './outbox';
+
+// Both are conditionally rendered — ReadinessDialog only appears once, at
+// session start, and RestTimer only while resting between sets — so
+// neither needs to be in `/session/[id]`'s initial bundle. Split out here
+// per docs/06-REDESIGN-PLAN.md §9's own named next-chunk candidate for this
+// route's 62 kB budget overage (docs/07-PRODUCTION-REVIEW.md #22). `ssr:
+// false` is safe for both: they're pure client interaction (a dialog, a
+// countdown), never the first thing painted.
+const ReadinessDialog = dynamic(
+  () => import('./ReadinessDialog').then((m) => m.ReadinessDialog),
+  { ssr: false },
+);
+const RestTimer = dynamic(
+  () => import('./RestTimer').then((m) => m.RestTimer),
+  { ssr: false },
+);
 
 const key = (blockLetter: string, slot: string, setNumber: number) =>
   `${blockLetter}:${slot}:${setNumber}`;
@@ -59,7 +74,15 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
   const [askReadiness, setAskReadiness] = useState(session.status === 'planned');
   const [startedAt] = useState(() => (session.startedAt ? new Date(session.startedAt).getTime() : Date.now()));
   const [now, setNow] = useState(startedAt);
-  const hardSets = useRef(0);
+  // Reseeded from the session row rather than always starting at 0, so a
+  // reload after a backoff already fired doesn't forget it happened. The
+  // backoff factor only ever depends on "has this happened before" (>= 2 vs
+  // < 2), never the exact count, so seeding to 1 whenever `autoregulated` is
+  // already true reproduces the correct next factor in every case — a
+  // session that already backed off once or several times both continue
+  // straight into the 10% branch on the next hard set, matching what would
+  // have happened without the reload. See docs/07-PRODUCTION-REVIEW.md #10.
+  const hardSets = useRef(session.autoregulated ? 1 : 0);
 
   useEffect(() => {
     const id = window.setInterval(() => setNow(Date.now()), 1000);
@@ -106,21 +129,26 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
       setExpandedSet(null);
       if (restSec > 0) setRest({ endsAt: Date.now() + restSec * 1000, totalSec: restSec });
 
-      // A very hard main-lift set means the next one comes down.
+      // A very hard main-lift set means the next one comes down. Computed
+      // as a plain value (not inside the setBlocks updater) so the same
+      // array can be persisted via applyAutoregulation right below — it
+      // used to live only in this component's state, gone on reload (#10).
       if (block.kind === 'main' && (value.rpe ?? 0) >= 9.5) {
         hardSets.current += 1;
         const factor = hardSets.current >= 2 ? 0.9 : 0.95;
-        setBlocks((prev) => prev.map((b) => b !== block ? b : {
+        const nextBlocks = blocks.map((b) => b !== block ? b : {
           ...b,
           exercises: b.exercises.map((e) => ({
             ...e,
             sets: e.sets.map((s) => s.setNumber > setNumber && s.weightKg
               ? { ...s, weightKg: Math.round(s.weightKg * factor / 2.5) * 2.5 } : s),
           })),
-        }));
+        });
+        setBlocks(nextBlocks);
         setToast(hardSets.current >= 2
           ? 'That is twice at the limit. Remaining sets dropped 10%.'
           : 'Backing the next set off 5%. Leave one in the tank.');
+        applyAutoregulation(session.id, nextBlocks).catch(() => {});
       }
 
       const row: LoggedSetRow = {
@@ -132,7 +160,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
       setQueued(await enqueue(row));
       flush().catch(() => {});
     },
-    [flush, session.id],
+    [flush, session.id, blocks],
   );
 
   const totals = useMemo(() => {
