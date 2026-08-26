@@ -749,3 +749,23 @@ chunk).
 **Blocked:** #2 and #24, unchanged from the previous entry — still waiting
 on `SUPABASE_SECRET_KEY`/the RLS migration and
 `VAPID_PRIVATE_KEY`/`CRON_SECRET` respectively.
+
+## #2 closed — 2026-08-26
+**Landed:** nothing code-side — this was always a manual-step item. The
+user set `SUPABASE_SECRET_KEY` in Vercel, redeployed, and confirmed the app
+still worked (verified independently too: the live deployment's runtime
+logs showed `/today` serving 200s with zero errors on the rebuilt
+deployment). Then ran `docs/08-RLS-TIGHTENING.md`'s migration in the
+Supabase SQL Editor.
+
+**Verified:** directly, once the Supabase project was reachable from this
+session — `select * from pg_policies where tablename like 't4m_%'` shows
+all 14 `t4m_` tables (13 originally named in the tightening doc, plus
+`t4m_rate_limit`, which the migration's pattern matches too — harmless,
+`service_role` bypasses RLS regardless) carrying exactly one
+`service_role`-only policy each. No `anon`/`authenticated` grant remains
+anywhere. `get_advisors` showed nothing new; everything else it flagged
+belongs to a different app sharing this Supabase project, not Training4me.
+
+**Blocked:** #24 only, now — `VAPID_PRIVATE_KEY` and `CRON_SECRET` in
+Vercel.

@@ -62,19 +62,26 @@ end $$;
 
 The loop discovers tables by name pattern at execution time, so it covers
 every `t4m_` table that exists when it runs, not a fixed list written down
-when this doc was drafted — currently 13: `t4m_profile`, `t4m_session`,
-`t4m_logged_set`, `t4m_program`, `t4m_pr`, `t4m_pain_flag`, `t4m_training_max`,
-`t4m_routine`, `t4m_routine_day`, `t4m_routine_item`, `t4m_custom_exercise`,
-`t4m_bodyweight`, `t4m_push_subscription`. It does **not** touch
-`t4m_rate_limit` (added alongside this review, already has no client-facing
-policy at all — see `src/server/rateLimit.ts`) or anything outside the
-`t4m_` prefix, matching this app's existing documented isolation from the
-rest of that Supabase
-project.
+when this doc was drafted — 14 as of 2026-08-26: the 13 originally named
+here (`t4m_profile`, `t4m_session`, `t4m_logged_set`, `t4m_program`, `t4m_pr`,
+`t4m_pain_flag`, `t4m_training_max`, `t4m_routine`, `t4m_routine_day`,
+`t4m_routine_item`, `t4m_custom_exercise`, `t4m_bodyweight`,
+`t4m_push_subscription`) plus `t4m_rate_limit`. That last one was expected to
+be skipped — it already had no client-facing policy at all (see
+`src/server/rateLimit.ts`) — but the migration's `like 't4m/_%'` pattern
+matches it too, so it picked up a `t4m_rate_limit_service` policy alongside
+the rest when this actually ran. Harmless either way: `service_role` bypasses
+RLS regardless of what policies exist, so an extra redundant one changes
+nothing. Nothing outside the `t4m_` prefix is touched, matching this app's
+existing documented isolation from the rest of that Supabase project.
 
-**Verify afterward:** the app should still work end-to-end (it now talks to
-Postgres as `service_role`, which bypasses RLS entirely — that's the point).
-Separately, confirm the publishable key can no longer read anything:
+**Status: done, applied and verified 2026-08-26.** All 14 tables carry
+exactly one `service_role`-only policy each; queried directly via
+`pg_policies` after running — no `anon`/`authenticated` grant remains
+anywhere. The app kept working on the live deployment throughout (it now
+talks to Postgres as `service_role`, which bypasses RLS entirely — that's
+the point). If you want to double-check the publishable key is locked out
+from your end too:
 
 ```bash
 curl 'https://evlxbewvsgrlncvtagmf.supabase.co/rest/v1/t4m_profile?select=*' \

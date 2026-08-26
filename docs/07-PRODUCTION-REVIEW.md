@@ -19,9 +19,9 @@ is, why it matters, and how to know it is fixed.
 Every item below has been worked since this review was written. Summary,
 so this doesn't need a line-by-line re-read to know what's left:
 
-- **Resolved:** #1, #3, #4, #5, #6, #7 (see follow-up note below), #8, #9,
-  #10, #11, #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #23, #25, #27,
-  #28.
+- **Resolved:** #1, #2, #3, #4, #5, #6, #7 (see follow-up note below), #8,
+  #9, #10, #11, #12, #13, #14, #15, #16, #17, #18, #19, #20, #21, #23, #25,
+  #27, #28.
 - **Partially resolved:**
   - **#7** — the eight "what date is today" call sites were fixed first;
     historical bucketing (weekly volume, e1RM series, the heatmap) bucketed
@@ -47,12 +47,17 @@ so this doesn't need a line-by-line re-read to know what's left:
     both boundary files wrap every route including `/unlock`, and a
     `'use server'` export imported there would reopen the exact
     worker-isolation shape #1's regression guard exists to catch.
-- **Blocked on you** — both are fully built; each needs one manual step in
-  a dashboard before it does anything (see `docs/08-RLS-TIGHTENING.md` and
-  `docs/09-PUSH-NOTIFICATIONS.md` for the exact steps):
-  - **#2** — set `SUPABASE_SECRET_KEY` in Vercel, confirm the app still
-    works, then apply the ready-to-run migration that drops the `anon`
-    grant from every `t4m_` table.
+- **#2 — closed 2026-08-26.** `SUPABASE_SECRET_KEY` set in Vercel and
+  confirmed working (no errors on the live deployment, `/today` serving
+  200s), then `docs/08-RLS-TIGHTENING.md`'s migration applied. Verified
+  directly against the database: all 14 `t4m_` tables (the 13 originally
+  named plus `t4m_rate_limit`, which the migration's table-name pattern
+  matches too — harmless, since `service_role` bypasses RLS regardless of
+  policy) now carry exactly one `service_role`-only policy each, no
+  `anon`/`authenticated` grant anywhere.
+- **Blocked on you** — fully built, needs one manual step in Vercel before
+  it does anything (see `docs/09-PUSH-NOTIFICATIONS.md` for the exact
+  steps):
   - **#24** — set `VAPID_PRIVATE_KEY` and `CRON_SECRET` in Vercel.
 - **Deliberately not attempted**, each for a reason worth knowing rather
   than a corner quietly cut:
