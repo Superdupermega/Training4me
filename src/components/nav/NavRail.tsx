@@ -4,9 +4,8 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Link from 'next/link';
 import { DESTINATIONS } from './destinations';
+import { RAIL_WIDTH } from './layout';
 import { useActiveDestination } from './useActiveDestination';
-
-export const RAIL_WIDTH = 88;
 
 /**
  * MUI has no packaged M3 navigation rail, so this is built from primitives:

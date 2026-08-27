@@ -6,6 +6,7 @@ import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { useEffect, useRef, useState } from 'react';
+import { visuallyHidden } from '@/components/visuallyHidden';
 import { playRestAlert } from './restAlert';
 
 interface Props {
@@ -87,7 +88,7 @@ export function RestTimer({ endsAt, totalSec, onAdjust, onDismiss }: Props) {
         This hidden region instead announces exactly once, the moment rest
         ends, which is the one state change worth interrupting for.
       */}
-      <Box aria-live="polite" sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+      <Box aria-live="polite" sx={visuallyHidden}>
         {remaining === 0 ? 'Rest is up. Next set.' : ''}
       </Box>
     </Paper>

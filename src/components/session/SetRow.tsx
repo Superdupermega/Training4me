@@ -36,6 +36,19 @@ interface Props {
   /** Show plate math under the weight stepper — only meaningful for a barbell-loaded exercise. */
   barbell?: boolean;
   microPlates?: boolean;
+  /**
+   * `Exercise.loadable` — can external load be added to this movement.
+   * Drives whether a *timed* set (a carry, a weighted hold) offers a weight
+   * field at all; a rep-based set always does.
+   */
+  loadable?: boolean;
+  /**
+   * What to seed the weight with when the prescription itself carries none —
+   * normally what was actually lifted last time, else what the training max
+   * projects. Without it a goblet squat or a farmer's carry starts at 0 and
+   * the quick ✓ records no load whatsoever.
+   */
+  suggestedWeightKg?: number | null;
 }
 
 const PAIN_LABEL: Record<PainArea, string> = {
@@ -45,9 +58,15 @@ const PAIN_LABEL: Record<PainArea, string> = {
 
 export function SetRow({
   set, logged, increment, expanded, onExpand, onComplete, barbell = false, microPlates = false,
+  loadable = true, suggestedWeightKg = null,
 }: Props) {
+  // What this set should start at: what was already logged, else what the
+  // plan prescribes, else what history/the training max suggests for this
+  // movement. The last of those is the difference between a carry or a
+  // goblet squat opening at a usable number and opening at zero.
+  const startingWeight = logged?.weightKg ?? set.weightKg ?? suggestedWeightKg ?? 0;
   const [reps, setReps] = useState(logged?.reps ?? set.reps ?? 0);
-  const [weight, setWeight] = useState(logged?.weightKg ?? set.weightKg ?? 0);
+  const [weight, setWeight] = useState(startingWeight);
   const [rpe, setRpe] = useState<number | undefined>(logged?.rpe ?? undefined);
   const [pain, setPain] = useState<PainArea | ''>(logged?.painFlag ?? '');
 
@@ -63,8 +82,11 @@ export function SetRow({
   useEffect(() => {
     if (done) return;
     setReps(set.reps ?? 0);
-    setWeight(set.weightKg ?? 0);
-  }, [set.reps, set.weightKg, done]);
+    // Same fallback chain as the initial state — resyncing to `set.weightKg
+    // ?? 0` here would wipe the suggested load back to zero on mount, which
+    // is the whole thing this is meant to avoid.
+    setWeight(set.weightKg ?? suggestedWeightKg ?? 0);
+  }, [set.reps, set.weightKg, suggestedWeightKg, done]);
   const isRamp = set.kind === 'ramp';
   const target = set.distanceM
     ? `${set.distanceM} m${set.perSide ? '/side' : ''}`
@@ -117,16 +139,37 @@ export function SetRow({
         {done ? (
           <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
             <Typography variant="body2" color="text.secondary" className="tnum">
-              {logged?.reps ?? ''}{logged?.weightKg ? ` × ${formatWeight(logged.weightKg)}` : ''}
+              {/* A timed set has no reps, so the weight must not carry a
+                  leading "×" — a logged carry would otherwise read
+                  "× 32.5 kg". Only join the two when both exist. */}
+              {[
+                logged?.reps ?? null,
+                logged?.weightKg ? formatWeight(logged.weightKg) : null,
+              ].filter(Boolean).join(' × ')}
               {logged?.rpe ? ` @${logged.rpe}` : ''}
             </Typography>
             <CheckIcon color="primary" fontSize="small" />
           </Stack>
         ) : (
+          // An unlogged set used to render a filled grey circle around a
+          // full-size tick, while a *logged* one rendered a small bare tick
+          // — the same glyph on both, with the heavier mark on the state
+          // that had not happened yet. A column of grey ticks reads as
+          // "done, greyed out", which is the opposite of what it means.
+          // Empty outlined ring = still to do; the filled primary tick above
+          // = done. See the design review, finding #08.
           <IconButton
             aria-label={`Complete set ${set.setNumber}`}
             onClick={submit}
-            sx={{ width: 56, height: 56, bgcolor: 'action.selected' }}
+            sx={{
+              // 48px is the theme's standard touch target (see
+              // MuiListItemButton); the old 56px ring stood taller than the
+              // row it sat in once it gained a visible border.
+              width: 48, height: 48, flexShrink: 0,
+              border: 2, borderColor: 'divider', color: 'transparent',
+              '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
+              '&:focus-visible': { borderColor: 'primary.main', color: 'primary.main' },
+            }}
           >
             <CheckIcon />
           </IconButton>
@@ -150,10 +193,19 @@ export function SetRow({
                 </Typography>
               )}
             </Stack>
-          ) : set.weightKg != null && (
-            // A loaded carry or weighted hold — no reps to log, but the
-            // weight actually held is still worth adjusting (a different
-            // dumbbell than prescribed, say) rather than being locked in.
+          ) : loadable && (
+            // A loaded carry or weighted hold: there are no reps to log, but
+            // the load is the entire point of the movement.
+            //
+            // This used to be gated on `set.weightKg != null` — the weight
+            // the *generator* prescribed. It never prescribes one for a
+            // carry or a hold, because it cannot know which dumbbell you
+            // will pick up. The result was that farmer's carries, front-rack
+            // carries, suitcase carries and suitcase holds offered no weight
+            // field at all: the one class of movement where the load is the
+            // whole prescription was the one you could not record a load
+            // for. Gate on whether the *exercise* can be loaded instead, so
+            // bikes, stretches and mobility work still correctly show none.
             <Stepper label="Weight (kg)" value={weight} step={increment} onChange={setWeight} />
           )}
           <Box>

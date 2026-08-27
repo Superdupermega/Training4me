@@ -37,7 +37,7 @@ export default async function ProfilePage() {
     ]);
 
   return (
-    <AppShell title="Profile">
+    <AppShell title="Profile" width="wide">
       <PageContainer width="wide" grid={false}>
         <Stack spacing={2.5}>
           <Box>

@@ -4,7 +4,7 @@ import { HistorySkeleton } from '@/components/skeletons';
 
 export default function Loading() {
   return (
-    <AppShell title="History">
+    <AppShell title="History" width="wide">
       <PageContainer width="wide">
         <HistorySkeleton />
       </PageContainer>

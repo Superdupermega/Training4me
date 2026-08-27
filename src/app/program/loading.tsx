@@ -7,7 +7,7 @@ import { PageContainer } from '@/components/PageContainer';
 
 export default function Loading() {
   return (
-    <AppShell title="Program">
+    <AppShell title="Program" width="wide">
       <PageContainer width="wide" grid={false}>
         <Stack spacing={2.5}>
           <Box>

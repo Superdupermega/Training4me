@@ -1,4 +1,5 @@
 import Box from '@mui/material/Box';
+import { visuallyHidden } from '@/components/visuallyHidden';
 import { EmptyChart } from './EmptyChart';
 
 export interface LinePoint {
@@ -82,7 +83,7 @@ export function LineChart({ points, height = 180, formatValue = String, emptyMes
       </Box>
       <Box
         component="table"
-        sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}
+        sx={visuallyHidden}
       >
         <tbody>
           {points.map((p, i) => (

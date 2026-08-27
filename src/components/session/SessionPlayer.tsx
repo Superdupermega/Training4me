@@ -26,6 +26,7 @@ import type { Readiness, SessionBlock } from '@/core/types';
 import { applyAutoregulation, beginSession, finishSession, logSets } from '@/server/actions';
 import type { ExerciseContext } from '@/server/exerciseContext';
 import type { LoggedSetRow, SessionRow } from '@/server/repo';
+import { visuallyHidden } from '@/components/visuallyHidden';
 import { SetRow, type LoggedValue } from './SetRow';
 import { drain, enqueue, peek } from './outbox';
 
@@ -47,6 +48,18 @@ const RestTimer = dynamic(
 
 const key = (blockLetter: string, slot: string, setNumber: number) =>
   `${blockLetter}:${slot}:${setNumber}`;
+
+/**
+ * The load to open a set at when the plan itself prescribes none — every
+ * accessory, every carry, every hold. Prefers what was actually lifted last
+ * time over what the training max projects, matching the priority the
+ * context line right above the set already shows the athlete
+ * (`summariseContext`), so the number in the stepper agrees with the number
+ * they just read.
+ */
+function suggestedWeight(context: ExerciseContext | undefined): number | null {
+  return context?.last?.topSet.weightKg ?? context?.expected?.weightKg ?? null;
+}
 
 interface Props {
   session: SessionRow;
@@ -271,6 +284,8 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
                           increment={increment}
                           barbell={exercise.equipment.includes('barbell')}
                           microPlates={microPlates}
+                          loadable={exercise.loadable}
+                          suggestedWeightKg={suggestedWeight(contexts?.[be.exerciseId])}
                           expanded={expandedSet === id}
                           onExpand={() => setExpandedSet((prev) => (prev === id ? null : id))}
                           onComplete={(value) =>
@@ -363,7 +378,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
         open={Boolean(toast)} autoHideDuration={5000} onClose={() => setToast(null)}
         message={toast ?? ''} anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
       />
-      <Box aria-live="polite" sx={{ position: 'absolute', width: 1, height: 1, overflow: 'hidden', clip: 'rect(0 0 0 0)' }}>
+      <Box aria-live="polite" sx={visuallyHidden}>
         {totals.done} of {totals.total} sets logged
       </Box>
     </Box>

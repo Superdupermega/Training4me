@@ -30,7 +30,18 @@ export function BottomNav() {
         // destination's label at this item count (3–5); leaving it on the
         // default made four of five icons look unlabelled/unfinished.
         showLabels
-        sx={{ maxWidth: 720, mx: 'auto', bgcolor: 'transparent' }}
+        sx={{
+          maxWidth: 720, mx: 'auto', bgcolor: 'transparent',
+          // MUI gives every BottomNavigationAction `min-width: 80px`. Five
+          // destinations therefore demand 400px, which does not fit a 390px
+          // phone: the row overflowed by 10px, so "Today" sat flush against
+          // the left edge with no gutter (its selected pill clipped) and
+          // "Profile" ran off the right. Letting the items shrink lets the
+          // five share the bar evenly and line up with the page's own
+          // gutters instead of overhanging them.
+          '& .MuiBottomNavigationAction-root': { minWidth: 0, px: 0.5 },
+          px: 1,
+        }}
       >
         {DESTINATIONS.map((d) => {
           const selected = active === d.href;

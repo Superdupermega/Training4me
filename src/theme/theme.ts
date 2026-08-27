@@ -150,7 +150,27 @@ export const theme = createTheme({
       },
     },
     MuiToggleButton: {
-      styleOverrides: { root: { textTransform: 'none', minHeight: 44, borderRadius: 999 } },
+      styleOverrides: {
+        // Shape only used to be set here, which left `Mui-selected` on MUI's
+        // default `action.selected` grey — the one place in the app where
+        // "selected" wasn't the green used by the nav pill, the week strip
+        // and the filter chips. In dark mode that grey also lands *dimmer*
+        // than the unselected siblings next to it, so the chosen option read
+        // as the disabled one. Use the tonal secondary container instead: it
+        // is defined for both schemes and stays lighter than its neighbours
+        // in each.
+        root: ({ theme: t }) => ({
+          textTransform: 'none', minHeight: 44, borderRadius: 999,
+          '&.Mui-selected': {
+            backgroundColor: t.vars.palette.secondaryContainer.main,
+            color: t.vars.palette.secondaryContainer.contrastText,
+            fontWeight: 700,
+            // Without this the selected button reverts to the grey hover
+            // fill the moment a pointer touches it.
+            '&:hover': { backgroundColor: t.vars.palette.secondaryContainer.main },
+          },
+        }),
+      },
     },
     MuiAppBar: { defaultProps: { elevation: 0, color: 'transparent' } },
     // Every tappable list/card row gets a real touch target, not whatever its

@@ -29,7 +29,7 @@ export default async function ProgramPage() {
 
   if (!program) {
     return (
-      <AppShell title="Program" action={addAction}>
+      <AppShell title="Program" action={addAction} width="wide">
         <PageContainer width="wide" grid={false}>
           <Stack spacing={2} sx={{ py: 6, maxWidth: 520 }}>
             <Typography variant="h1">No plan yet</Typography>
@@ -53,7 +53,7 @@ export default async function ProgramPage() {
   const weeks = Array.from({ length: program.weeks }, (_, i) => i + 1);
 
   return (
-    <AppShell title="Program" action={addAction}>
+    <AppShell title="Program" action={addAction} width="wide">
       <PageContainer width="wide" grid={false}>
         <Stack spacing={2.5}>
           <Box>
@@ -86,7 +86,7 @@ export default async function ProgramPage() {
           <Box
             sx={{
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', md: 'repeat(auto-fill, minmax(360px, 1fr))' },
+              gridTemplateColumns: { xs: 'minmax(0, 1fr)', md: 'repeat(auto-fill, minmax(min(360px, 100%), 1fr))' },
               gap: 2,
             }}
           >
@@ -95,7 +95,14 @@ export default async function ProgramPage() {
               const isDeload = weekSessions[0]?.isDeload ?? false;
               const done = weekSessions.filter((s) => s.status === 'completed').length;
               return (
-                <Box key={week}>
+                // Grid items default to `min-width: auto`, which is
+                // min-content — and a `noWrap` session title has a
+                // min-content width of the whole untruncated string. The
+                // track grew to fit it instead of the title ellipsising, so
+                // the week cards ran 14px past the viewport on a phone and
+                // the page scrolled sideways. `minWidth: 0` lets the column
+                // shrink and hands the truncation back to `noWrap`.
+                <Box key={week} sx={{ minWidth: 0 }}>
                   <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline', mb: 1 }}>
                     <Typography variant="overline" color="text.secondary">
                       Week {week}{isDeload ? ' · Deload' : ''}

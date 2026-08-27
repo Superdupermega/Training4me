@@ -42,7 +42,7 @@ export default async function HistoryPage({
   const visiblePrs = showAllPrs ? prs : prs.slice(0, PR_PREVIEW);
 
   return (
-    <AppShell title="History">
+    <AppShell title="History" width="wide">
       <PageContainer width="wide">
         <Box>
           <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
