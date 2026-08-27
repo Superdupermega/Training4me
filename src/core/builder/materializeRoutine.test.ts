@@ -54,6 +54,20 @@ describe('materializeRoutine', () => {
     expect(session.mainPattern).toBe('squat');
   });
 
+  it('names a single-exercise block after its exercise, so same-kind blocks stay distinguishable', () => {
+    // Three secondary blocks in one day used to render as three collapsed
+    // accordions all reading "Secondary", with nothing to tell them apart.
+    const r = routine([
+      item({ id: 'i1', position: 1, blockLetter: 'A', exerciseId: 'bench-press' }),
+      item({ id: 'i2', position: 2, blockLetter: 'B', exerciseId: 'barbell-row' }),
+      item({ id: 'i3', position: 3, blockLetter: 'C', exerciseId: 'db-curl' }),
+    ]);
+    const blocks = materializeRoutine(r, args)[0]!.sessions[0]!.blocks;
+    expect(blocks.every((b) => b.kind === 'secondary')).toBe(true);
+    expect(blocks.map((b) => b.name)).toEqual(['Bench Press', 'Barbell Row', 'DB Curl']);
+    expect(new Set(blocks.map((b) => b.name)).size).toBe(3);
+  });
+
   it('groups a shared block letter into one superset block, rounds correct, slots D1/D2', () => {
     const r = routine([
       item({ id: 'i1', position: 1, blockLetter: 'D', exerciseId: 'db-curl', sets: 3, supersetGroup: 'g1' }),

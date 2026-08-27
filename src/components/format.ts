@@ -3,6 +3,22 @@ import type { PrescribedSet, SessionBlock } from '@/core/types';
 
 export const minutes = (seconds: number) => `${Math.round(seconds / 60)} min`;
 
+/**
+ * The running session clock: `m:ss` under an hour, `h:mm:ss` past it.
+ *
+ * The player used to render `${Math.floor(elapsed / 60)}:${ss}` with no
+ * rollover, so a session left open for two hours read "122:56" — a number
+ * that looks like a bug and can't be read as a duration at a glance.
+ */
+export function clock(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(s / 3600);
+  const mins = Math.floor((s % 3600) / 60);
+  const secs = s % 60;
+  const ss = String(secs).padStart(2, '0');
+  return hours > 0 ? `${hours}:${String(mins).padStart(2, '0')}:${ss}` : `${mins}:${ss}`;
+}
+
 export function formatWeight(kg: number | undefined | null): string {
   if (kg == null) return '';
   return Number.isInteger(kg) ? `${kg} kg` : `${kg.toFixed(2).replace(/0$/, '')} kg`;

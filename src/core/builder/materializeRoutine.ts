@@ -8,12 +8,6 @@ import type {
 } from '../types';
 import type { Routine, RoutineDay, RoutineItem } from './types';
 
-/** Matches the generator's own block-naming convention (assembleSession.ts). */
-const BLOCK_KIND_LABEL: Record<string, string> = {
-  primer: 'Primer', main: 'Main lift', secondary: 'Secondary',
-  finisher: 'Finisher', downregulate: 'Down-regulate',
-};
-
 export interface MaterializeArgs {
   startDate: string;
   /** Overrides `routine.weeks` when the athlete schedules a different length. */
@@ -130,9 +124,17 @@ function materializeDay(day: RoutineDay, trainingMaxes: Record<string, number>, 
       }
 
       const item = items[0]!;
+      // A one-exercise block is named after the exercise, not its kind. The
+      // generator only ever emits one block of each kind per session, so
+      // "Secondary" identifies it there — but a self-built day can hold any
+      // number of them, and naming by kind gave a session three collapsed
+      // blocks all reading "Secondary" with no way to tell them apart. The
+      // exercise name is the useful label at that spot: it is what you are
+      // scanning for when the block is collapsed.
+      const exercise = materializeExercise(item, letter, trainingMaxes, increment);
       return {
-        letter, kind: item.blockKind, name: BLOCK_KIND_LABEL[item.blockKind] ?? item.blockKind,
-        exercises: [materializeExercise(item, letter, trainingMaxes, increment)],
+        letter, kind: item.blockKind, name: getExercise(item.exerciseId).name,
+        exercises: [exercise],
         estimatedSec: 0,
       };
     });

@@ -18,7 +18,7 @@ import Typography from '@mui/material/Typography';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { minutes } from '@/components/format';
+import { clock, minutes } from '@/components/format';
 import { TopBar } from '@/components/nav/TopBar';
 import { ExerciseContextLine } from '@/components/exercises/ExerciseContext';
 import { getExercise } from '@/core/library/exercises';
@@ -210,7 +210,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
         backHref="/today"
         action={
           <Typography className="tnum" variant="h3" color="text.secondary">
-            {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+            {clock(elapsed)}
           </Typography>
         }
       />

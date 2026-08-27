@@ -180,7 +180,14 @@ export function SetRow({
         <Stack spacing={2} sx={{ px: 2, pb: 2 }}>
           {!set.distanceM && !set.durationSec ? (
             <Stack spacing={0.5}>
-              <Stack direction="row" spacing={2}>
+              {/*
+                Stacked on a phone, side by side from `sm` up. Two steppers
+                sharing a 390px screen leave 42px for the number, and
+                "147.5" needs 59 — so a real working weight was clipped in a
+                field you cannot widen. Vertical room is the one thing this
+                panel has plenty of.
+              */}
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
                 <Stepper label="Reps" value={reps} step={1} onChange={setReps} />
                 <Stepper label="Weight (kg)" value={weight} step={increment} onChange={setWeight} />
               </Stack>
@@ -255,7 +262,15 @@ function Stepper({
   };
 
   return (
-    <Box sx={{ flex: 1 }}>
+    // `minWidth: 0` is load-bearing, not tidiness. A flex item defaults to
+    // `min-width: auto`, i.e. it refuses to shrink below its min-content —
+    // and the min-content here is driven by the bare `<input>` below, which
+    // with no `size` attribute reports its default 20-character intrinsic
+    // width (254px at this font size). Two steppers side by side therefore
+    // demanded 781px, so on any phone the entire Weight stepper sat off the
+    // right edge of the screen: the set expanded, and the one control you
+    // opened it for was not reachable. See the design review, finding #20.
+    <Box sx={{ flex: 1, minWidth: 0 }}>
       <Typography variant="overline" color="text.secondary">{label}</Typography>
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 0.5 }}>
         <Button
@@ -266,6 +281,11 @@ function Stepper({
           component="input"
           type="text"
           inputMode="decimal"
+          // Without this the input reports the default 20-character
+          // intrinsic width, which is what pushed the stepper off-screen
+          // above. `flex: 1` gives it the real width; `size` only needs to
+          // stop it claiming a large one of its own.
+          size={1}
           aria-label={label}
           value={text}
           onFocus={(e: FocusEvent<HTMLInputElement>) => e.target.select()}
