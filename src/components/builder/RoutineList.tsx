@@ -17,7 +17,9 @@ import { archiveRoutine } from '@/server/actions';
 import type { RoutineListItem } from '@/server/routines';
 import { NewRoutineDialog } from './NewRoutineDialog';
 
-export function RoutineList({ routines }: { routines: RoutineListItem[] }) {
+export function RoutineList({
+  routines, liveRoutineId = null,
+}: { routines: RoutineListItem[]; liveRoutineId?: string | null }) {
   const router = useRouter();
   const [creating, setCreating] = useState(false);
   const [items, setItems] = useState(routines);
@@ -59,7 +61,10 @@ export function RoutineList({ routines }: { routines: RoutineListItem[] }) {
                 <CardActionArea component={Link} href={`/program/builder/${r.id}`} sx={{ p: 2, flex: 1, minWidth: 0 }}>
                   <Box sx={{ minWidth: 0 }}>
                     <Typography variant="h3" noWrap>{r.name}</Typography>
-                    <Stack direction="row" spacing={1} sx={{ mt: 0.5 }}>
+                    <Stack direction="row" spacing={1} sx={{ mt: 0.5, flexWrap: 'wrap', gap: 0.5 }}>
+                      {r.id === liveRoutineId && (
+                        <Chip size="small" color="primary" label="Training this now" />
+                      )}
                       <Chip size="small" label={`${r.daysPerWeek} days / week`} />
                       <Chip size="small" label={`${r.weeks} weeks`} />
                     </Stack>

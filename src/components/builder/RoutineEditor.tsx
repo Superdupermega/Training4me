@@ -1,5 +1,6 @@
 'use client';
 import AddIcon from '@mui/icons-material/Add';
+import BoltIcon from '@mui/icons-material/BoltRounded';
 import CalendarViewWeekIcon from '@mui/icons-material/CalendarViewWeek';
 import CallSplitIcon from '@mui/icons-material/CallSplit';
 import DeleteIcon from '@mui/icons-material/Delete';
@@ -31,7 +32,7 @@ import { materializeRoutine } from '@/core/builder/materializeRoutine';
 import type { Routine } from '@/core/builder/types';
 import { getExercise } from '@/core/library/exercises';
 import type { Exercise } from '@/core/types';
-import { archiveRoutine, renameRoutine, saveRoutineDays, scheduleRoutine } from '@/server/actions';
+import { archiveRoutine, renameRoutine, saveRoutineDays, scheduleRoutine, updateLiveProgram } from '@/server/actions';
 import { ADVISORY_COPY } from './advisoryCopy';
 import { DayManagerDialog } from './DayManagerDialog';
 import {
@@ -47,6 +48,21 @@ interface Props {
   trainingMaxes: Record<string, number>;
   increment: number;
   paceFactor: number;
+  /**
+   * True when this routine *is* the block currently being trained. A live
+   * program is edited in place — the sessions still ahead are rewritten and
+   * everything already trained is left alone — rather than being replaced by
+   * a fresh block starting today, which is what scheduling it again does.
+   */
+  live?: boolean;
+  /**
+   * The name of the block being trained when it is *not* this routine —
+   * a generated one, say. Editing that in place is possible but is a bigger
+   * change than a live update (the block becomes this routine's, and the
+   * generator's wave over the weeks ahead goes with it), so it sits behind
+   * its own confirmation rather than in the main action.
+   */
+  otherLiveProgramName?: string | null;
 }
 
 function summarise(item: EditableItem): string {
@@ -67,7 +83,9 @@ function summarise(item: EditableItem): string {
   return [setsPart, target, addedWeight].filter(Boolean).join(' ');
 }
 
-export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }: Props) {
+export function RoutineEditor({
+  routine, trainingMaxes, increment, paceFactor, live = false, otherLiveProgramName = null,
+}: Props) {
   const router = useRouter();
   const [days, setDays] = useState<EditableDay[]>(() => fromRoutine(routine));
   const [dayTab, setDayTab] = useState(0);
@@ -81,6 +99,8 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deletePending, setDeletePending] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [restartOpen, setRestartOpen] = useState(false);
+  const [adoptOpen, setAdoptOpen] = useState(false);
 
   const day = days[dayTab]!;
 
@@ -206,8 +226,32 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
     setPending(true);
     const result = await scheduleRoutine(routine.id);
     setPending(false);
+    setRestartOpen(false);
     if (result.ok) router.push('/today');
     else setError(result.error);
+  }
+
+  /**
+   * The live-editing path: save the routine, then re-materialise it over the
+   * block already in flight. Nothing you have trained is touched, the block
+   * keeps its dates, and you stay in the editor — this is a change to a
+   * program you are in the middle of, not a new one.
+   */
+  async function handleUpdateLive(adopt = false) {
+    const saved = await handleSave();
+    if (!saved) return;
+    setPending(true);
+    const result = await updateLiveProgram(routine.id, { adopt });
+    setPending(false);
+    setAdoptOpen(false);
+    if (!result.ok) { setError(result.error); return; }
+    const { rewritten = 0, kept = 0 } = result.data ?? {};
+    setToast(
+      kept > 0
+        ? `Updated. ${rewritten} session${rewritten === 1 ? '' : 's'} ahead rewritten, ${kept} already trained left alone.`
+        : `Updated. ${rewritten} session${rewritten === 1 ? '' : 's'} rewritten.`,
+    );
+    router.refresh();
   }
 
   return (
@@ -221,6 +265,17 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
         slotProps={{ htmlInput: { 'aria-label': 'Program name', style: { fontSize: '1.25rem', fontWeight: 600 } } }}
         fullWidth
       />
+
+      {live && (
+        <Alert severity="success" variant="outlined" icon={<BoltIcon fontSize="small" />}>
+          <Typography variant="body2" sx={{ fontWeight: 600 }}>You are training this program right now.</Typography>
+          <Typography variant="caption" color="text.secondary" component="p">
+            Changing it updates every session you have not started yet, on the dates they are
+            already scheduled for. Sessions you have finished, are part-way through, or skipped
+            keep exactly what you did.
+          </Typography>
+        </Alert>
+      )}
 
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
         <Tabs
@@ -298,10 +353,31 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
         <Button variant="outlined" fullWidth disabled={pending} onClick={async () => { if (await handleSave()) setToast('Saved.'); }}>
           Save
         </Button>
-        <Button fullWidth disabled={pending} onClick={handleSchedule}>
-          {pending ? 'Working…' : 'Save & start training this'}
+        <Button fullWidth disabled={pending} onClick={live ? () => handleUpdateLive() : handleSchedule}>
+          {pending ? 'Working…' : live ? 'Save & update what I am training' : 'Save & start training this'}
         </Button>
       </Stack>
+
+      {live && (
+        // Still reachable, deliberately quietly: rescheduling throws away
+        // where you are in the block and starts week 1 today. That is a real
+        // thing to want after a layoff, and the wrong default every other
+        // time — hence a text button behind a confirmation, not a peer of
+        // the two buttons above.
+        <Button variant="text" disabled={pending} onClick={() => setRestartOpen(true)} sx={{ alignSelf: 'flex-start' }}>
+          Restart this program from today
+        </Button>
+      )}
+
+      {!live && otherLiveProgramName && (
+        // You are editing one program while training another. Starting this
+        // one fresh (the button above) is the usual answer; putting it over
+        // the block you are already in the middle of, keeping its dates and
+        // everything you have logged, is the other one.
+        <Button variant="text" disabled={pending} onClick={() => setAdoptOpen(true)} sx={{ alignSelf: 'flex-start' }}>
+          Apply this to the block I am training instead
+        </Button>
+      )}
 
       <Button
         variant="text" color="error" startIcon={<DeleteOutlineIcon />}
@@ -323,6 +399,41 @@ export function RoutineEditor({ routine, trainingMaxes, increment, paceFactor }:
         error={deleteError}
         onConfirm={handleDeleteRoutine}
         onClose={() => { if (!deletePending) setDeleteOpen(false); }}
+      />
+
+      <ConfirmDialog
+        open={restartOpen}
+        title="Restart from today?"
+        description={
+          <>
+            Week 1 starts again today and the block you are part-way through is abandoned.
+            Everything you have already logged stays in your history — but the sessions ahead
+            of you now, and where you are in the wave, are replaced.
+          </>
+        }
+        confirmLabel="Restart"
+        pending={pending}
+        onConfirm={handleSchedule}
+        onClose={() => { if (!pending) setRestartOpen(false); }}
+      />
+
+      <ConfirmDialog
+        open={adoptOpen}
+        title="Train this instead, from where you are?"
+        description={
+          <>
+            “{otherLiveProgramName}” keeps its start date and everything you have already
+            trained — sessions you have finished, are part-way through, or skipped are
+            untouched. Every session ahead of you is replaced by the days you have built here,
+            on the dates they are already scheduled for. If “{otherLiveProgramName}” was
+            generated, its wave over the weeks ahead — the peak week, the deload — goes with it.
+          </>
+        }
+        confirmLabel="Apply to my block"
+        danger={false}
+        pending={pending}
+        onConfirm={() => handleUpdateLive(true)}
+        onClose={() => { if (!pending) setAdoptOpen(false); }}
       />
 
       <ExercisePickerDialog

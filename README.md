@@ -111,7 +111,7 @@ attack.
 | Command | What it does |
 |---|---|
 | `pnpm dev` | Run locally |
-| `pnpm test` | 283 unit tests, including the 150-combination generator matrix |
+| `pnpm test` | 324 unit tests, including the 150-combination generator matrix |
 | `pnpm lint` | ESLint, including the rule that keeps `src/core` pure |
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm build` | Production build |
@@ -161,6 +161,40 @@ routine into real dated sessions that play in the exact same session
 player as a generated block — nothing downstream of that point can tell the
 two apart. A generated program can also be duplicated back into an editable
 routine if you want to start from it rather than a blank week.
+
+**You can keep editing it while you are training it.** Open the live program
+from */program* → *Edit this program*, change whatever you want, and *Save &
+update what I am training* re-materialises it over the block already in
+flight: every session you have not started yet is rewritten, on the dates it
+was already scheduled for, and every session you have finished, are part-way
+through, or skipped keeps exactly what you did. The block keeps its start
+date and its history. Restarting from week 1 today is still there, behind a
+confirmation, for when that is genuinely what you want.
+
+A **generated** block has no routine behind it, so editing that one live is
+two steps: duplicate it into a routine (*/program* → *Duplicate as routine*),
+edit it, then *Apply this to the block I am training instead*. Same deal —
+your dates and everything trained survive — with one honest catch the
+confirmation spells out: from that point the block is the routine's, so the
+generator's wave over the weeks ahead, the peak week and the deload, goes
+with it.
+
+## During a session
+
+The weight on every set is **typed in, not assumed**. The plan's prescription
+and what you lifted last time are both shown — as the field's placeholder, as
+a one-tap *Use 100 kg*, and as the number the +/− steppers land on from empty
+— but nothing enters them for you, and the one-tap ✓ on a movement you have
+not chosen a load for opens the set and asks instead of logging a number
+nobody typed. A logged set is a record of what happened, and the plan does not
+know that.
+
+You only pay that once per movement: **the weight you pick on the first set
+carries over to the rest of them**, so the sets after it are back to a single
+tap. Leaving the field empty is itself an answer — "bodyweight, no load" — and
+carries over the same way. If a set goes to RPE 9.5 the backoff takes the
+carried weight down with the prescription, so the next tap cannot quietly put
+the full load back on the bar.
 
 ## How it adapts
 

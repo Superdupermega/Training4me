@@ -114,6 +114,47 @@ describe('SessionPlayer finish flow', () => {
     expect(await screen.findByText(/twice at the limit/)).toBeInTheDocument();
   });
 
+  it('carries the weight entered on the first set over to the next one', async () => {
+    // Nothing pre-fills a weight any more, so the first set of a movement is
+    // typed by hand — and every set after it opens on that number, one tap
+    // from logged.
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoSetMainBlock() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Set 1'));
+    fireEvent.change(screen.getByLabelText('Weight (kg)'), { target: { value: '97.5' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+
+    // Set 2 was never opened: the one-tap ✓ is enough because the weight is
+    // already decided for this movement.
+    fireEvent.click(await screen.findByLabelText('Complete set 2'));
+    await waitFor(() => expect(screen.getAllByText('5 × 97.5 kg')).toHaveLength(2));
+  });
+
+  it('takes the carried-over weight down with the RPE backoff, not just the prescription', async () => {
+    // Otherwise the first tap on the next set would quietly put the full
+    // load straight back on the bar and undo the backoff.
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoSetMainBlock() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Set 1'));
+    fireEvent.change(screen.getByLabelText('Weight (kg)'), { target: { value: '100' } });
+    fireEvent.click(screen.getByLabelText('RPE 9.5'));
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+
+    fireEvent.click(await screen.findByLabelText('Complete set 2'));
+    // 100 × 0.95 — the same first-offence factor the prescription took.
+    expect(await screen.findByText('5 × 95 kg')).toBeInTheDocument();
+  });
+
   it('navigates away once finishSession actually succeeds', async () => {
     finishSession.mockResolvedValue({ ok: true });
     render(<SessionPlayer session={session()} increment={2.5} initialLogged={{}} />);

@@ -70,13 +70,28 @@ export default async function ProgramPage() {
                 up edge-to-edge stacked on mobile and sit side by side once
                 there's room, rather than each hugging its own text width. */}
             <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+              {/* A block materialised from a routine stays editable while you
+                  train it: the editor rewrites the sessions ahead of you and
+                  leaves everything already trained alone. A generated block
+                  has no routine behind it, so the way in is to duplicate it
+                  into one first — which is what the button beside this does. */}
+              {program.routineId ? (
+                <Button component={Link} href={`/program/builder/${program.routineId}`} size="large">
+                  Edit this program
+                </Button>
+              ) : (
+                <DuplicateAsRoutineButton programName={program.name} />
+              )}
               <Button component={Link} href="/program/builder" variant="outlined" size="large">
                 Build my own program
               </Button>
-              {!(program.input as unknown as { routineId?: string } | null)?.routineId && (
-                <DuplicateAsRoutineButton programName={program.name} />
-              )}
             </Stack>
+            {program.routineId && (
+              <Typography variant="caption" color="text.secondary">
+                Editing it mid-block is fine — sessions you have already trained keep exactly
+                what you did.
+              </Typography>
+            )}
             {/* Deliberately its own row, not a third item in the group above —
                 a destructive action shouldn't share visual weight with the
                 two build actions. */}

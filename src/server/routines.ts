@@ -2,7 +2,8 @@ import 'server-only';
 import { unstable_cache } from 'next/cache';
 import type { Routine, RoutineDay, RoutineItem, TargetKind } from '@/core/builder/types';
 import { materializeRoutine } from '@/core/builder/materializeRoutine';
-import type { BlockKind } from '@/core/types';
+import { reconcileProgram } from '@/core/builder/reconcileProgram';
+import type { BlockKind, PlannedSession } from '@/core/types';
 import { db } from './db';
 
 /**
@@ -171,6 +172,22 @@ export async function saveRoutineDays(routineId: string, days: RoutineDay[]): Pr
   await client.from('t4m_routine').update({ updated_at: new Date().toISOString() }).eq('id', routineId);
 }
 
+/**
+ * Every column of a materialised session bar its identity — shared by
+ * `scheduleRoutine` (which inserts a whole block of them) and
+ * `updateProgramFromRoutine` (which re-inserts only the ones still ahead of
+ * the athlete), so the two can never drift into materialising a session
+ * differently.
+ */
+function sessionRow(programId: string, routineId: string, s: PlannedSession) {
+  return {
+    program_id: programId, week_number: s.weekNumber, day_number: s.dayNumber, weekday: s.weekday,
+    scheduled_date: s.date, archetype: s.archetype, title: s.title, main_pattern: s.mainPattern,
+    is_deload: s.isDeload, estimated_sec: s.estimatedSec, blocks: s.blocks, status: 'planned',
+    routine_id: routineId,
+  };
+}
+
 export interface ScheduleRoutineArgs {
   startDate: string;
   trainingMaxes: Record<string, number>;
@@ -197,14 +214,7 @@ export async function scheduleRoutine(routine: Routine, args: ScheduleRoutineArg
   }).select('id').single();
   if (programError) throw new Error(programError.message);
 
-  const rows = plan.flatMap((week) =>
-    week.sessions.map((s) => ({
-      program_id: program.id, week_number: s.weekNumber, day_number: s.dayNumber, weekday: s.weekday,
-      scheduled_date: s.date, archetype: s.archetype, title: s.title, main_pattern: s.mainPattern,
-      is_deload: s.isDeload, estimated_sec: s.estimatedSec, blocks: s.blocks, status: 'planned',
-      routine_id: routine.id,
-    })),
-  );
+  const rows = plan.flatMap((week) => week.sessions.map((s) => sessionRow(program.id, routine.id, s)));
   const { error: sessionError } = await client.from('t4m_session').insert(rows);
   if (sessionError) {
     await client.from('t4m_program').delete().eq('id', program.id);
@@ -212,4 +222,104 @@ export async function scheduleRoutine(routine: Routine, args: ScheduleRoutineArg
   }
 
   return program.id;
+}
+
+/**
+ * Only the columns `updateProgramFromRoutine` reasons about — the rest ride
+ * along under the index signature so a row can be re-inserted verbatim if
+ * the replacement insert fails.
+ */
+interface ProgramSessionRecord {
+  id: string;
+  week_number: number;
+  day_number: number;
+  status: 'planned' | 'in_progress' | 'completed' | 'skipped';
+  [column: string]: unknown;
+}
+
+export interface UpdateProgramResult {
+  /** Sessions re-materialised from the edited routine. */
+  rewritten: number;
+  /** Sessions left exactly as they were, because they are already history. */
+  kept: number;
+}
+
+/**
+ * Edit a program *while you are training it*.
+ *
+ * Re-materialises the routine over the block already in flight instead of
+ * starting a new one: every session you have not touched yet is rewritten
+ * from the edited routine, and every session that is part of your history —
+ * finished, in progress, deliberately skipped, or holding logged sets from
+ * an offline replay — is left exactly as it was. The program row itself, its
+ * start date, and its logged history all survive, which is the whole
+ * difference between this and `scheduleRoutine`: that one abandons the
+ * active block and starts a fresh one from today.
+ *
+ * The dates come out identical because the plan is re-materialised from the
+ * program's own `start_date`, not from today — week 3 Wednesday stays week 3
+ * Wednesday, with new content.
+ */
+export async function updateProgramFromRoutine(
+  programId: string, routine: Routine, args: ScheduleRoutineArgs,
+): Promise<UpdateProgramResult> {
+  const client = db();
+
+  const { data: existingRows, error: readError } = await client
+    .from('t4m_session').select('*').eq('program_id', programId);
+  if (readError) throw new Error(readError.message);
+  const existing = (existingRows ?? []) as ProgramSessionRecord[];
+
+  // A session still marked `planned` can nonetheless hold logged sets — one
+  // that arrived out of the offline outbox after a failed `beginSession`.
+  // Deleting it would cascade those sets away, so `reconcileProgram` needs
+  // to know before it decides anything.
+  const plannedIds = existing.filter((e) => e.status === 'planned').map((e) => e.id);
+  const withLogs = new Set<string>();
+  if (plannedIds.length > 0) {
+    const { data: logRows, error: logError } = await client
+      .from('t4m_logged_set').select('session_id').in('session_id', plannedIds);
+    if (logError) throw new Error(logError.message);
+    for (const row of (logRows ?? []) as { session_id: string }[]) withLogs.add(row.session_id);
+  }
+
+  const { replaceIds, kept, insert, weeks } = reconcileProgram(
+    materializeRoutine(routine, args),
+    existing.map((e) => ({
+      id: e.id, weekNumber: e.week_number, dayNumber: e.day_number,
+      status: e.status, hasLoggedSets: withLogs.has(e.id),
+    })),
+    routine.weeks,
+  );
+  const rows = insert.map((s) => sessionRow(programId, routine.id, s));
+
+  if (replaceIds.length > 0) {
+    const { error } = await client.from('t4m_session').delete().in('id', replaceIds);
+    if (error) throw new Error(error.message);
+  }
+  if (rows.length > 0) {
+    const { error } = await client.from('t4m_session').insert(rows);
+    if (error) {
+      // Put back exactly what was deleted, ids and all, rather than leaving
+      // the athlete with a program missing the weeks ahead of them. There is
+      // no transaction to be had through PostgREST, so this is the
+      // compensation for the one step that can fail after a destructive one.
+      if (replaceIds.length > 0) {
+        await client.from('t4m_session').insert(existing.filter((e) => replaceIds.includes(e.id)));
+      }
+      throw new Error(error.message);
+    }
+  }
+
+  // The program row follows the routine — its name, its shape, and a length
+  // that can only grow (see `reconcileProgram`). `routine_id` is written
+  // unconditionally so that a generated block adopted into this routine
+  // (see `updateLiveProgram`) is a routine-backed program from here on, and
+  // editable in place like any other.
+  const { error: programError } = await client.from('t4m_program')
+    .update({ name: routine.name, days_per_week: routine.daysPerWeek, weeks, routine_id: routine.id })
+    .eq('id', programId);
+  if (programError) throw new Error(programError.message);
+
+  return { rewritten: rows.length, kept: kept.length };
 }

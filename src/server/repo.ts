@@ -70,6 +70,14 @@ export interface ProgramRow {
   startDate: string;
   status: string;
   input: GeneratorInput;
+  /**
+   * Set when this block was materialised from a builder routine — which is
+   * also what makes it editable while it is live: the routine is still the
+   * source, so it can be re-materialised over the sessions still ahead
+   * (`updateProgramFromRoutine`). A generated block has none, and has to be
+   * duplicated into a routine first.
+   */
+  routineId: string | null;
 }
 
 interface SessionRecord {
@@ -164,6 +172,7 @@ export const getActiveProgram = unstable_cache(
     return {
       id: data.id, name: data.name, weeks: data.weeks, daysPerWeek: data.days_per_week,
       startDate: data.start_date, status: data.status, input: data.input,
+      routineId: data.routine_id ?? null,
     };
   },
   ['t4m-active-program'],

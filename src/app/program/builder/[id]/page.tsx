@@ -2,16 +2,22 @@ import Box from '@mui/material/Box';
 import { notFound } from 'next/navigation';
 import { TopBar } from '@/components/nav/TopBar';
 import { RoutineEditor } from '@/components/builder/RoutineEditor';
-import { getProfile, getTrainingMaxes } from '@/server/repo';
+import { getActiveProgram, getProfile, getTrainingMaxes } from '@/server/repo';
 import { getRoutine } from '@/server/routines';
 
 export const dynamic = 'force-dynamic';
 
 export default async function RoutineBuilderPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [routine, profile] = await Promise.all([getRoutine(id), getProfile()]);
+  const [routine, profile, activeProgram] = await Promise.all([
+    getRoutine(id), getProfile(), getActiveProgram(),
+  ]);
   if (!routine) notFound();
   const trainingMaxes = await getTrainingMaxes(profile.timezone);
+  // The block being trained right now was materialised from this very
+  // routine — so editing it here edits a program mid-flight, and the editor
+  // says so and offers the in-place update instead of a fresh start.
+  const live = activeProgram?.routineId === routine.id;
 
   return (
     <Box sx={{ minHeight: '100dvh' }}>
@@ -22,6 +28,8 @@ export default async function RoutineBuilderPage({ params }: { params: Promise<{
           trainingMaxes={trainingMaxes}
           increment={profile.microPlates ? 1.25 : 2.5}
           paceFactor={profile.paceFactor}
+          live={live}
+          otherLiveProgramName={live ? null : activeProgram?.name ?? null}
         />
       </Box>
     </Box>

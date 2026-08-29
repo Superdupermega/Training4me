@@ -377,6 +377,49 @@ export async function scheduleRoutine(routineId: string): Promise<Result<{ progr
   }
 }
 
+/**
+ * Push an edit to a routine into the block currently being trained, rather
+ * than starting a new one. Everything not yet trained is rewritten;
+ * everything already done, in progress or skipped is left alone — see
+ * `routines.updateProgramFromRoutine`.
+ *
+ * `adopt` is the same operation aimed at a block that did *not* come from
+ * this routine — a generated one, or one built from a different routine.
+ * It is a bigger change (from here on the block is this routine's, and the
+ * generator's wave over the weeks ahead is gone), so it is never implied:
+ * the caller has to ask for it, from behind a confirmation.
+ */
+export async function updateLiveProgram(
+  routineId: string, opts?: { adopt?: boolean },
+): Promise<Result<routines.UpdateProgramResult>> {
+  try {
+    await requireUnlocked();
+    const [routine, profile, program] = await Promise.all([
+      routines.getRoutine(routineId), repo.getProfile(), repo.getActiveProgram(),
+    ]);
+    if (!routine) return { ok: false, error: 'Routine not found' };
+    if (!program) return { ok: false, error: 'Nothing is being trained right now' };
+    if (program.routineId !== routineId && !opts?.adopt) {
+      return { ok: false, error: 'This program is not the one you are training' };
+    }
+    const trainingMaxes = await repo.getTrainingMaxes(profile.timezone);
+
+    const result = await routines.updateProgramFromRoutine(program.id, routine, {
+      // The block's own start date, not today: the sessions ahead keep the
+      // dates they were already scheduled for.
+      startDate: program.startDate,
+      trainingMaxes,
+      increment: profile.microPlates ? 1.25 : 2.5,
+      paceFactor: profile.paceFactor,
+    });
+    revalidateTag(TAGS.program);
+    revalidateTag(TAGS.sessions);
+    return { ok: true, data: result };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 /** Seeds a new routine from the currently active generated program's week one — the fast path most people will actually use. */
 export async function duplicateActiveProgramAsRoutine(name: string): Promise<Result<{ routineId: string }>> {
   try {

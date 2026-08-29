@@ -49,13 +49,42 @@ const RestTimer = dynamic(
 const key = (blockLetter: string, slot: string, setNumber: number) =>
   `${blockLetter}:${slot}:${setNumber}`;
 
+/** One movement within this session — every set of it shares a weight decision. */
+const slotKey = (blockLetter: string, slot: string) => `${blockLetter}:${slot}`;
+
 /**
- * The load to open a set at when the plan itself prescribes none — every
+ * The weight already chosen for each movement in this session, rebuilt from
+ * what is already logged. Later sets win, so a mid-exercise correction (set
+ * 3 dropped to 90 kg) is what the rest of the exercise carries, not the
+ * opening number — and a reload mid-session picks the decision back up
+ * instead of asking for it again.
+ *
+ * `0` is a real entry: "bodyweight, no load, and I meant it." That is why
+ * this is a `Record<string, number>` read with `?? null`, never a truthiness
+ * test.
+ */
+function carriedFromLogged(
+  blocks: SessionBlock[], logged: Record<string, LoggedValue>,
+): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const block of blocks) {
+    for (const exercise of block.exercises) {
+      for (const set of exercise.sets) {
+        const entry = logged[key(block.letter, exercise.slot, set.setNumber)];
+        if (entry) out[slotKey(block.letter, exercise.slot)] = entry.weightKg ?? 0;
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The load to *offer* for a set the plan prescribes none for — every
  * accessory, every carry, every hold. Prefers what was actually lifted last
  * time over what the training max projects, matching the priority the
  * context line right above the set already shows the athlete
- * (`summariseContext`), so the number in the stepper agrees with the number
- * they just read.
+ * (`summariseContext`), so the number on offer agrees with the number they
+ * just read. Offered, never entered: see `SetRow`'s `carriedWeightKg`.
  */
 function suggestedWeight(context: ExerciseContext | undefined): number | null {
   return context?.last?.topSet.weightKg ?? context?.expected?.weightKg ?? null;
@@ -73,6 +102,11 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
   const router = useRouter();
   const [logged, setLogged] = useState<Record<string, LoggedValue>>(initialLogged);
   const [blocks, setBlocks] = useState<SessionBlock[]>(session.blocks);
+  // Weight is entered by hand, once per movement: the first set you log
+  // decides what the rest of that exercise opens at.
+  const [carried, setCarried] = useState<Record<string, number>>(
+    () => carriedFromLogged(session.blocks, initialLogged),
+  );
   const [openBlock, setOpenBlock] = useState<string>(() => {
     const next = session.blocks.find((b) => b.kind === 'main');
     return next?.letter ?? session.blocks[0]?.letter ?? 'A';
@@ -142,6 +176,10 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
       setExpandedSet(null);
       if (restSec > 0) setRest({ endsAt: Date.now() + restSec * 1000, totalSec: restSec });
 
+      // What this set was done with becomes what the rest of the movement
+      // opens at — the backoff below may still take it down a notch.
+      let carryOver = value.weightKg ?? 0;
+
       // A very hard main-lift set means the next one comes down. Computed
       // as a plain value (not inside the setBlocks updater) so the same
       // array can be persisted via applyAutoregulation right below — it
@@ -158,11 +196,17 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
           })),
         });
         setBlocks(nextBlocks);
+        // The prescription for the sets ahead came down; the weight they
+        // would otherwise carry over from this one has to come down with
+        // it, or the backoff is undone by the first tap on the next set.
+        carryOver = Math.round((carryOver * factor) / increment) * increment;
         setToast(hardSets.current >= 2
           ? 'That is twice at the limit. Remaining sets dropped 10%.'
           : 'Backing the next set off 5%. Leave one in the tank.');
         applyAutoregulation(session.id, nextBlocks).catch(() => {});
       }
+
+      setCarried((prev) => ({ ...prev, [slotKey(block.letter, slot)]: carryOver }));
 
       const row: LoggedSetRow = {
         sessionId: session.id, blockLetter: block.letter, slot, exerciseId, setNumber,
@@ -173,7 +217,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
       setQueued(await enqueue(row));
       flush().catch(() => {});
     },
-    [flush, session.id, blocks],
+    [flush, session.id, blocks, increment],
   );
 
   const totals = useMemo(() => {
@@ -286,6 +330,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
                           microPlates={microPlates}
                           loadable={exercise.loadable}
                           suggestedWeightKg={suggestedWeight(contexts?.[be.exerciseId])}
+                          carriedWeightKg={carried[slotKey(block.letter, be.slot)] ?? null}
                           expanded={expandedSet === id}
                           onExpand={() => setExpandedSet((prev) => (prev === id ? null : id))}
                           onComplete={(value) =>

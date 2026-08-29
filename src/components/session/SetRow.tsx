@@ -43,12 +43,27 @@ interface Props {
    */
   loadable?: boolean;
   /**
-   * What to seed the weight with when the prescription itself carries none —
-   * normally what was actually lifted last time, else what the training max
-   * projects. Without it a goblet squat or a farmer's carry starts at 0 and
-   * the quick ✓ records no load whatsoever.
+   * A *hint* only — what was actually lifted last time, else what the
+   * training max projects. It is offered next to the empty field and as the
+   * value the +/- steppers adopt on their first tap; it is never entered on
+   * the athlete's behalf. See `carriedWeightKg` for why nothing pre-fills
+   * itself here any more.
    */
   suggestedWeightKg?: number | null;
+  /**
+   * The weight the athlete already chose for *this movement* earlier in
+   * this session, if any — the one thing that does pre-fill the field,
+   * because they picked it themselves. `0` is a real, decided value
+   * ("bodyweight, no load"), which is why this is `number | null` and not
+   * a falsy check anywhere below.
+   *
+   * Everything else — the prescription's `weightKg`, the suggestion above —
+   * is now shown rather than entered: a logged set records what was lifted,
+   * and neither the plan nor last week's log knows that. The quick ✓ on a
+   * loadable movement with nothing decided yet opens the row instead of
+   * committing a number nobody typed.
+   */
+  carriedWeightKg?: number | null;
 }
 
 const PAIN_LABEL: Record<PainArea, string> = {
@@ -58,35 +73,46 @@ const PAIN_LABEL: Record<PainArea, string> = {
 
 export function SetRow({
   set, logged, increment, expanded, onExpand, onComplete, barbell = false, microPlates = false,
-  loadable = true, suggestedWeightKg = null,
+  loadable = true, suggestedWeightKg = null, carriedWeightKg = null,
 }: Props) {
-  // What this set should start at: what was already logged, else what the
-  // plan prescribes, else what history/the training max suggests for this
-  // movement. The last of those is the difference between a carry or a
-  // goblet squat opening at a usable number and opening at zero.
-  const startingWeight = logged?.weightKg ?? set.weightKg ?? suggestedWeightKg ?? 0;
+  // What this set starts at: what was already logged for it, else what the
+  // athlete chose for this movement earlier in the session. Nothing else —
+  // an empty field is the honest state for "you have not said what you are
+  // lifting yet".
   const [reps, setReps] = useState(logged?.reps ?? set.reps ?? 0);
-  const [weight, setWeight] = useState(startingWeight);
+  const [weight, setWeight] = useState<number | null>(logged?.weightKg ?? carriedWeightKg);
   const [rpe, setRpe] = useState<number | undefined>(logged?.rpe ?? undefined);
   const [pain, setPain] = useState<PainArea | ''>(logged?.painFlag ?? '');
+  // Set by a quick ✓ that could not be honoured because no weight has been
+  // chosen yet — the row opens and says why rather than silently doing
+  // nothing.
+  const [askedForWeight, setAskedForWeight] = useState(false);
 
   const done = Boolean(logged);
+  // The number to offer, never to assume: the plan's own prescription first
+  // (an 82%-of-training-max main set), else last time / the training-max
+  // projection for this movement.
+  const hintKg = set.weightKg ?? suggestedWeightKg ?? null;
+  // A movement that can hold load needs a decision before the one-tap ✓ can
+  // stand for anything. A stretch or an assault bike does not.
+  const needsWeight = loadable && weight == null;
 
-  // The RPE ≥ 9.5 autoregulation (SessionPlayer) rewrites `set.weightKg` on
-  // sets further down the same lift after a very hard one. This row's own
-  // `key` never changes, so React never remounts it and the initial
-  // useState above would otherwise keep offering the stale, pre-drop
-  // weight. Resync from the prescription whenever it changes — but only
-  // while the set is still unlogged; once submitted, the row shows what was
-  // actually done, not a moving target.
+  // This row's own `key` never changes, so React never remounts it: the
+  // initial `useState` above runs once, and everything that arrives later —
+  // the reps a readiness trim rewrote, the weight the athlete has just
+  // chosen for an earlier set of the same movement — has to be picked up
+  // here instead. Only while the set is still unlogged: once submitted, the
+  // row shows what was actually done, not a moving target.
   useEffect(() => {
     if (done) return;
     setReps(set.reps ?? 0);
-    // Same fallback chain as the initial state — resyncing to `set.weightKg
-    // ?? 0` here would wipe the suggested load back to zero on mount, which
-    // is the whole thing this is meant to avoid.
-    setWeight(set.weightKg ?? suggestedWeightKg ?? 0);
-  }, [set.reps, set.weightKg, suggestedWeightKg, done]);
+    // Adopt the carried-over weight only into a field nobody has filled in
+    // yet: a number typed into set 4 while set 2 was still open is the
+    // athlete's, and logging set 2 must not overwrite it. The autoregulation
+    // backoff scales what SessionPlayer carries over, so an untouched later
+    // set still comes down 5% or 10% the moment a hard set is logged.
+    setWeight((prev) => (prev == null ? carriedWeightKg : prev));
+  }, [set.reps, carriedWeightKg, done]);
   const isRamp = set.kind === 'ramp';
   const target = set.distanceM
     ? `${set.distanceM} m${set.perSide ? '/side' : ''}`
@@ -94,17 +120,34 @@ export function SetRow({
       ? `${Math.round(set.durationSec / 60)} min${set.perSide ? '/side' : ''}`
       : `${set.reps}${set.perSide ? '/side' : ''} reps`;
 
-  const submit = () =>
+  const submit = () => {
+    setAskedForWeight(false);
     onComplete({
       reps: set.distanceM || set.durationSec ? undefined : reps,
-      weightKg: weight || undefined,
+      // A decided 0 is "bodyweight, no external load" — a real answer, and
+      // one that still carries over to the rest of the movement, but not a
+      // load worth writing to the log.
+      weightKg: weight ? weight : undefined,
       rpe,
       distanceM: set.distanceM,
       durationSec: set.durationSec,
       painFlag: pain || null,
     });
+  };
 
-  const plates = barbell && weight > STANDARD_BAR_KG
+  /**
+   * The one-tap ✓. It logs the set as it stands — unless the movement takes
+   * load and no weight has been chosen for it yet, in which case it opens
+   * the row and asks, rather than committing the plan's number as though it
+   * were what happened.
+   */
+  const quickComplete = () => {
+    if (!needsWeight) { submit(); return; }
+    setAskedForWeight(true);
+    if (!expanded) onExpand();
+  };
+
+  const plates = barbell && weight != null && weight > STANDARD_BAR_KG
     ? plateBreakdown(weight, STANDARD_BAR_KG, availablePlatesKg(microPlates))
     : null;
 
@@ -160,7 +203,7 @@ export function SetRow({
           // = done. See the design review, finding #08.
           <IconButton
             aria-label={`Complete set ${set.setNumber}`}
-            onClick={submit}
+            onClick={quickComplete}
             sx={{
               // 48px is the theme's standard touch target (see
               // MuiListItemButton); the old 56px ring stood taller than the
@@ -188,9 +231,16 @@ export function SetRow({
                 panel has plenty of.
               */}
               <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
-                <Stepper label="Reps" value={reps} step={1} onChange={setReps} />
-                <Stepper label="Weight (kg)" value={weight} step={increment} onChange={setWeight} />
+                <Stepper label="Reps" value={reps} step={1} onChange={(v) => setReps(v ?? 0)} />
+                <Stepper
+                  label="Weight (kg)" value={weight} step={increment} hint={hintKg}
+                  onChange={setWeight}
+                />
               </Stack>
+              <WeightPrompt
+                weight={weight} hintKg={hintKg} asked={askedForWeight}
+                onUseHint={() => { setWeight(hintKg); setAskedForWeight(false); }}
+              />
               {plates && (
                 <Typography variant="caption" color="text.secondary" className="tnum">
                   {plates.perSide.length === 0
@@ -213,7 +263,16 @@ export function SetRow({
             // whole prescription was the one you could not record a load
             // for. Gate on whether the *exercise* can be loaded instead, so
             // bikes, stretches and mobility work still correctly show none.
-            <Stepper label="Weight (kg)" value={weight} step={increment} onChange={setWeight} />
+            <Stack spacing={0.5}>
+              <Stepper
+                label="Weight (kg)" value={weight} step={increment} hint={hintKg}
+                onChange={setWeight}
+              />
+              <WeightPrompt
+                weight={weight} hintKg={hintKg} asked={askedForWeight}
+                onUseHint={() => { setWeight(hintKg); setAskedForWeight(false); }}
+              />
+            </Stack>
           )}
           <Box>
             <Typography variant="overline" color="text.secondary">How hard was it?</Typography>
@@ -242,23 +301,64 @@ export function SetRow({
   );
 }
 
+/**
+ * The line under the weight field: what the plan or your log suggests, as an
+ * offer you tap, plus the nudge a quick ✓ leaves behind when it could not
+ * log the set because nothing had been chosen yet.
+ */
+function WeightPrompt({
+  weight, hintKg, asked, onUseHint,
+}: { weight: number | null; hintKg: number | null; asked: boolean; onUseHint: () => void }) {
+  if (weight != null) return null;
+  return (
+    <Stack direction="row" spacing={1} sx={{ alignItems: 'center', flexWrap: 'wrap', gap: 0.5 }}>
+      {hintKg != null && (
+        <Button size="small" variant="text" onClick={onUseHint} sx={{ px: 1 }}>
+          Use {formatWeight(hintKg)}
+        </Button>
+      )}
+      <Typography variant="caption" color={asked ? 'error' : 'text.secondary'}>
+        {asked
+          ? 'Enter the weight first — it carries over to the rest of this exercise.'
+          : 'Enter what you are actually lifting.'}
+      </Typography>
+    </Stack>
+  );
+}
+
 function Stepper({
-  label, value, step, onChange,
-}: { label: string; value: number; step: number; onChange: (v: number) => void }) {
-  // A tap-to-edit numeric field, not just +/- buttons — the prescription
-  // usually pre-fills the right number, but any real correction (a lighter
-  // dumbbell, a different unit, a bodyweight movement you loaded) used to
-  // mean tapping "+" as many as 40+ times from zero. Local `text` state
-  // (rather than binding the input straight to the numeric `value`) so the
-  // field can sit empty mid-edit instead of snapping back to "0" the
-  // instant it's cleared — see docs/07-PRODUCTION-REVIEW.md #18.
-  const [text, setText] = useState(String(value));
-  useEffect(() => setText(String(value)), [value]);
+  label, value, step, hint = null, onChange,
+}: {
+  label: string;
+  /** `null` = nothing entered yet, which is a state the field can sit in. */
+  value: number | null;
+  step: number;
+  /** What the +/- buttons adopt on their first tap from empty. */
+  hint?: number | null;
+  onChange: (v: number | null) => void;
+}) {
+  // A tap-to-edit numeric field, not just +/- buttons — a real correction (a
+  // lighter dumbbell, a different unit, a bodyweight movement you loaded)
+  // used to mean tapping "+" as many as 40+ times from zero. Local `text`
+  // state (rather than binding the input straight to the numeric `value`) so
+  // the field can sit empty — both mid-edit and as its genuine starting
+  // state for a weight nobody has decided yet.
+  const [text, setText] = useState(value == null ? '' : String(value));
+  useEffect(() => setText(value == null ? '' : String(value)), [value]);
+
+  const round = (n: number) => Math.round(n * 100) / 100;
+  // From empty, one tap on either button adopts the suggestion rather than
+  // stepping away from a zero nobody chose: "−" lands on it exactly, "+"
+  // takes it as the floor. It is still the athlete's tap that puts the
+  // number in the field.
+  const decrement = () => onChange(value == null ? (hint ?? 0) : Math.max(0, round(value - step)));
+  const increment = () => onChange(value == null ? (hint ?? step) : round(value + step));
 
   const commit = (raw: string) => {
+    if (raw.trim() === '') { onChange(null); return; } // cleared on purpose — not decided
     const next = Number(raw);
-    if (raw.trim() !== '' && Number.isFinite(next)) onChange(Math.max(0, next));
-    else setText(String(value)); // invalid or empty on blur — snap back to the last real value
+    if (Number.isFinite(next)) onChange(Math.max(0, next));
+    else setText(value == null ? '' : String(value)); // gibberish — snap back to the last real value
   };
 
   return (
@@ -275,7 +375,7 @@ function Stepper({
       <Stack direction="row" spacing={1} sx={{ alignItems: 'center', mt: 0.5 }}>
         <Button
           variant="outlined" sx={{ minWidth: 48, px: 0 }} aria-label={`Decrease ${label}`}
-          onClick={() => onChange(Math.max(0, Math.round((value - step) * 100) / 100))}
+          onClick={decrement}
         >−</Button>
         <Box
           component="input"
@@ -287,13 +387,15 @@ function Stepper({
           // stop it claiming a large one of its own.
           size={1}
           aria-label={label}
+          placeholder={hint != null ? String(hint) : '—'}
           value={text}
           onFocus={(e: FocusEvent<HTMLInputElement>) => e.target.select()}
           onChange={(e: ChangeEvent<HTMLInputElement>) => {
             const raw = e.target.value;
             setText(raw);
+            if (raw.trim() === '') { onChange(null); return; }
             const next = Number(raw);
-            if (raw.trim() !== '' && Number.isFinite(next)) onChange(Math.max(0, next));
+            if (Number.isFinite(next)) onChange(Math.max(0, next));
           }}
           onBlur={(e: FocusEvent<HTMLInputElement>) => commit(e.target.value)}
           className="tnum"
@@ -302,11 +404,12 @@ function Stepper({
             fontFamily: 'inherit', color: 'inherit', border: 'none', outline: 'none',
             background: 'transparent', p: 0,
             '&::-webkit-outer-spin-button, &::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 },
+            '&::placeholder': { color: 'text.disabled', fontWeight: 400 },
           }}
         />
         <Button
           variant="outlined" sx={{ minWidth: 48, px: 0 }} aria-label={`Increase ${label}`}
-          onClick={() => onChange(Math.round((value + step) * 100) / 100)}
+          onClick={increment}
         >+</Button>
       </Stack>
     </Box>
