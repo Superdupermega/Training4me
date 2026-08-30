@@ -80,6 +80,26 @@ self.addEventListener('push', (event) => {
   );
 });
 
+// The rest timer (docs/chunks/chunk-24-craft.md §1) posts its `endsAt` here
+// so this worker can fire the notification if the page's own tab is
+// suspended before its foreground timeout runs. This is explicitly
+// best-effort: a service worker with no pending fetch/push has no guarantee
+// of staying alive at all, and a `setTimeout` scheduled inside one is not
+// exempt from that — most browsers may simply terminate it before this
+// fires. See RestTimer.tsx's own comment and DECISIONS.md for what was
+// actually observed testing this on a real phone.
+self.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'rest-timer') return;
+  const { endsAt, body } = event.data;
+  const delay = Math.max(0, endsAt - Date.now());
+  setTimeout(() => {
+    self.registration.showNotification('Rest is up', {
+      body: body || 'Next set.',
+      icon: '/icon.svg', badge: '/icon.svg', tag: 'rest-timer',
+    });
+  }, delay);
+});
+
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const url = event.notification.data && event.notification.data.url ? event.notification.data.url : '/today';

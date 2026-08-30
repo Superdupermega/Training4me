@@ -12,6 +12,7 @@ import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
 import { ExerciseContextPanel } from '@/components/exercises/ExerciseContext';
 import { STYLE_LABEL, TIER_LABEL } from '@/components/exercises/labels';
+import { PatternGlyph } from '@/components/exercises/patternGlyphs';
 import { EQUIPMENT_LABEL } from '@/core/library/equipment';
 import { BY_ID, getExercise } from '@/core/library/exercises';
 import { GROUP_LABEL, MUSCLE_LABEL } from '@/core/library/muscles';
@@ -42,7 +43,10 @@ export default async function ExerciseDetailPage({ params }: { params: Promise<{
       <PageContainer>
         <Stack spacing={2.5}>
           <Box>
-            <Typography variant="h1">{ex.name}</Typography>
+            <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+              <PatternGlyph pattern={ex.pattern} size={32} />
+              <Typography variant="h1">{ex.name}</Typography>
+            </Stack>
             <Typography color="text.secondary">{ex.nameSv}</Typography>
             <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap', gap: 1 }}>
               <Chip size="small" label={TIER_LABEL[ex.tier] ?? ex.tier} />
@@ -132,7 +136,8 @@ export default async function ExerciseDetailPage({ params }: { params: Promise<{
                   const alt = getExercise(altId);
                   return (
                     <Box key={altId}>
-                      <ListItemButton component={Link} href={`/exercises/${altId}`} sx={{ py: 1.25, px: 2 }}>
+                      <ListItemButton component={Link} href={`/exercises/${altId}`} sx={{ py: 1.25, px: 2, gap: 1.5 }}>
+                        <PatternGlyph pattern={alt.pattern} />
                         <ListItemText primary={alt.name} secondary={alt.nameSv} />
                       </ListItemButton>
                       {i < arr.length - 1 && <Divider />}

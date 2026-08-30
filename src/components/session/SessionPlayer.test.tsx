@@ -349,3 +349,70 @@ describe('SessionPlayer focus mode (docs/chunks/chunk-22-player-feel.md §2)', (
     expect(screen.getByText('Bench Press')).toBeInTheDocument();
   });
 });
+
+describe('SessionPlayer ramp presentation (docs/chunks/chunk-24-craft.md §7)', () => {
+  beforeEach(() => {
+    push.mockClear();
+    refresh.mockClear();
+    beginSession.mockReset();
+    finishSession.mockReset();
+    logSets.mockReset();
+    applyAutoregulation.mockClear();
+    vi.mocked(enqueue).mockClear();
+  });
+
+  function rampAndWorkingBlocks() {
+    return [{
+      letter: 'A', kind: 'main', name: 'Main lift', estimatedSec: 600,
+      exercises: [{
+        slot: 'A1', exerciseId: 'back-squat', tempo: '20X1', cue: 'Brace and drive.',
+        sets: [
+          { setNumber: 1, kind: 'ramp', reps: 5, weightKg: 60, restSec: 0, estimatedSec: 20 },
+          { setNumber: 2, kind: 'working', reps: 5, weightKg: 100, restSec: 0, estimatedSec: 30 },
+          { setNumber: 3, kind: 'working', reps: 5, weightKg: 100, restSec: 0, estimatedSec: 30 },
+        ],
+      }],
+    }] as SessionRow['blocks'];
+  }
+
+  // Regression test against docs/07-PRODUCTION-REVIEW.md #14: `totals` and
+  // the block-done check both filter `kind !== 'ramp'` independently of the
+  // warm-up ladder's grouping, which is presentation only.
+  it('excludes ramp sets from the total and from "done", exactly as before the ladder grouping', async () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: rampAndWorkingBlocks() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    // Two working sets, ramp excluded from the planned total.
+    expect(screen.getByText('0/2 sets')).toBeInTheDocument();
+
+    // Logging the ramp set must not move the counter at all. Its row's own
+    // overline reads "Ramp", not "Set 1" — SetRow's existing behaviour,
+    // unchanged by the ladder grouping around it.
+    fireEvent.click(screen.getByText('Ramp'));
+    fireEvent.change(screen.getByLabelText('Weight (kg)'), { target: { value: '60' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    await waitFor(() => expect(enqueue).toHaveBeenCalled());
+    expect(screen.getByText('0/2 sets')).toBeInTheDocument();
+
+    // Logging a real working set does.
+    fireEvent.click(await screen.findByLabelText('Complete set 2'));
+    await waitFor(() => expect(screen.getByText('1/2 sets')).toBeInTheDocument());
+  });
+
+  it('groups the ramp set under a "Warm-up ladder" heading, still individually loggable', () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: rampAndWorkingBlocks() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    expect(screen.getByText('Warm-up ladder')).toBeInTheDocument();
+    // The ramp set is still its own real, tappable row underneath the heading.
+    expect(screen.getByLabelText('Complete set 1')).toBeInTheDocument();
+  });
+});

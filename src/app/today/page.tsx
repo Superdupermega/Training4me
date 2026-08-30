@@ -13,6 +13,7 @@ import { SessionRow } from '@/components/today/SessionRow';
 import { TodayCard } from '@/components/today/TodayCard';
 import { WeekStrip } from '@/components/today/WeekStrip';
 import { NextBlockCard } from '@/components/today/NextBlockCard';
+import { consistency } from '@/server/analytics';
 import { getActiveProgram, getProfile, listSessions } from '@/server/repo';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +41,14 @@ export default async function TodayPage() {
     );
   }
 
-  const sessions = await listSessions(program.id);
+  // `consistency()` is already `unstable_cache`'d, and its own query already
+  // gates on `status = 'active'` internally — running it alongside
+  // `listSessions` rather than serially after costs nothing extra.
+  // docs/chunks/chunk-24-craft.md §6: the number that makes you train
+  // should be on the screen you open, not buried on a profile tab.
+  const [sessions, streak] = await Promise.all([
+    listSessions(program.id), consistency(profile.timezone),
+  ]);
   const todayDate = today(profile.timezone);
 
   // The oldest session that isn't done, in schedule order — never just
@@ -64,6 +72,12 @@ export default async function TodayPage() {
           <Box>
             <Typography variant="overline" color="text.secondary">{program.name}</Typography>
             <Typography variant="h1">Week {currentWeek} of {program.weeks}</Typography>
+            <Typography variant="body2" color="text.secondary" className="tnum">
+              {weekSessions.filter((s) => s.status === 'completed').length}/{weekSessions.length} sessions this week
+              {streak && streak.currentStreak > 0
+                ? ` · ${streak.currentStreak} session${streak.currentStreak === 1 ? '' : 's'} in a row`
+                : ''}
+            </Typography>
           </Box>
 
           <WeekStrip

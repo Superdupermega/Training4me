@@ -25,7 +25,7 @@ export default function OfflinePage() {
         textAlign: 'center', px: 3,
       }}
     >
-      <WifiOffIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
+      <WifiOffIcon aria-hidden sx={{ fontSize: 64, color: 'text.secondary', opacity: 0.4 }} />
       <Typography variant="h2">You&apos;re offline</Typography>
       <Typography color="text.secondary" sx={{ maxWidth: 320 }}>
         Training4me needs a connection to load your program and history.

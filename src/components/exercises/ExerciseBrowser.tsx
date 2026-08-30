@@ -26,6 +26,7 @@ import type { Equipment, Exercise } from '@/core/types';
 import { getExerciseContexts } from '@/server/actions';
 import type { ExerciseContext } from '@/server/exerciseContext';
 import { STYLE_LABEL } from './labels';
+import { PatternGlyph } from './patternGlyphs';
 
 function matches(ex: Exercise, query: string): boolean {
   const q = query.trim().toLowerCase();
@@ -43,7 +44,8 @@ function Row({ ex, context }: { ex: Exercise; context: ExerciseContext | undefin
   const contextLine = summariseContext(context);
   const secondary = [muscles, equipmentSummary(ex), contextLine].filter(Boolean).join(' · ');
   return (
-    <ListItemButton component={Link} href={`/exercises/${ex.id}`} sx={{ py: 1.25, px: 2 }}>
+    <ListItemButton component={Link} href={`/exercises/${ex.id}`} sx={{ py: 1.25, px: 2, gap: 1.5 }}>
+      <PatternGlyph pattern={ex.pattern} />
       <ListItemText primary={ex.name} secondary={secondary} slotProps={{ secondary: { noWrap: true } }} />
     </ListItemButton>
   );

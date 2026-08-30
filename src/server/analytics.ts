@@ -184,6 +184,15 @@ export interface ConsistencySummary {
   percent: number;
   weekNumber: number;
   weeks: number;
+  /**
+   * Consecutive `completed` sessions counting back from the most recently
+   * scheduled one that is due (`scheduled_date <= today`) — broken by a
+   * skip, or by one still merely `planned`/`in_progress` past its date
+   * (overdue). Chunk 24 (docs/chunks/chunk-24-craft.md §6): the number
+   * that makes you train should be on the screen you open, not buried on a
+   * profile tab.
+   */
+  currentStreak: number;
 }
 
 export const consistency = unstable_cache(
@@ -203,10 +212,20 @@ export const consistency = unstable_cache(
     const completed = rows.filter((r) => r.status === 'completed').length;
     const skipped = rows.filter((r) => r.status === 'skipped').length;
     const weekNumber = Math.max(...rows.map((r) => r.week_number));
+
+    // Same `rows` this call already fetched — no second query. Walked most
+    // recent first; stops at the first non-`completed` row, whatever it is.
+    const byDateDesc = [...rows].sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date));
+    let currentStreak = 0;
+    for (const row of byDateDesc) {
+      if (row.status !== 'completed') break;
+      currentStreak += 1;
+    }
+
     return {
       completed, skipped, total: rows.length,
       percent: Math.round((completed / rows.length) * 100),
-      weekNumber, weeks: program.weeks,
+      weekNumber, weeks: program.weeks, currentStreak,
     };
   },
   ['t4m-consistency'],

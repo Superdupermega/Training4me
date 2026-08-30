@@ -8,19 +8,13 @@ import Chip from '@mui/material/Chip';
 import IconButton from '@mui/material/IconButton';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
-import { formatWeight } from '@/components/format';
+import { formatWeight, setTargetText } from '@/components/format';
 import { ExerciseContextLine } from '@/components/exercises/ExerciseContext';
 import type { BlockExercise, PrescribedSet, SessionBlock } from '@/core/types';
 import type { ExerciseContext } from '@/server/exerciseContext';
+import { BLOCK_KIND_META } from './blockKindMeta';
+import { RampLadder } from './RampLadder';
 import { SetRow, type LoggedValue } from './SetRow';
-
-/** Same formatting `SetRow` uses internally for its own row label — kept in
- * step with it deliberately, since this is the same number shown bigger. */
-function setTargetText(set: PrescribedSet): string {
-  if (set.distanceM) return `${set.distanceM} m${set.perSide ? '/side' : ''}`;
-  if (set.durationSec) return `${Math.round(set.durationSec / 60)} min${set.perSide ? '/side' : ''}`;
-  return `${set.reps}${set.perSide ? '/side' : ''} reps`;
-}
 
 interface Props {
   block: SessionBlock;
@@ -62,6 +56,7 @@ export function FocusView({
 }: Props) {
   const nextUnlogged = exercise.sets.find((s) => !logged[keyFor(s.setNumber)]);
   const heroSet = nextUnlogged ?? exercise.sets[exercise.sets.length - 1];
+  const { icon: BlockKindIcon, color: blockKindColor } = BLOCK_KIND_META[block.kind];
 
   return (
     <Box>
@@ -86,7 +81,8 @@ export function FocusView({
       </Stack>
 
       <Stack spacing={0.5} sx={{ mb: 1.5 }}>
-        <Stack direction="row" spacing={1} sx={{ alignItems: 'baseline' }}>
+        <Stack direction="row" spacing={1} sx={{ alignItems: 'center' }}>
+          <BlockKindIcon aria-hidden fontSize="small" sx={{ color: blockKindColor }} />
           <Typography variant="overline" color="primary">{block.letter} · {exercise.slot}</Typography>
           <Chip size="small" variant="outlined" label={exercise.tempo} />
         </Stack>
@@ -106,25 +102,36 @@ export function FocusView({
         </Box>
       )}
 
-      {exercise.sets.map((set) => {
-        const id = keyFor(set.setNumber);
+      {(() => {
+        // Presentation only, same as the list view — see RampLadder.tsx.
+        const ramps = exercise.sets.filter((s) => s.kind === 'ramp');
+        const working = exercise.sets.filter((s) => s.kind !== 'ramp');
+        const renderSet = (set: PrescribedSet) => {
+          const id = keyFor(set.setNumber);
+          return (
+            <SetRow
+              key={id}
+              set={set}
+              logged={logged[id]}
+              increment={increment}
+              barbell={barbell}
+              microPlates={microPlates}
+              loadable={loadable}
+              suggestedWeightKg={suggestedWeightKg}
+              carriedWeightKg={carriedWeightKg}
+              expanded={expandedSet === id}
+              onExpand={() => onExpand(id)}
+              onComplete={(value) => onComplete(set.setNumber, set.restSec, value)}
+            />
+          );
+        };
         return (
-          <SetRow
-            key={id}
-            set={set}
-            logged={logged[id]}
-            increment={increment}
-            barbell={barbell}
-            microPlates={microPlates}
-            loadable={loadable}
-            suggestedWeightKg={suggestedWeightKg}
-            carriedWeightKg={carriedWeightKg}
-            expanded={expandedSet === id}
-            onExpand={() => onExpand(id)}
-            onComplete={(value) => onComplete(set.setNumber, set.restSec, value)}
-          />
+          <>
+            <RampLadder ramps={ramps}>{ramps.map(renderSet)}</RampLadder>
+            {working.map(renderSet)}
+          </>
         );
-      })}
+      })()}
     </Box>
   );
 }

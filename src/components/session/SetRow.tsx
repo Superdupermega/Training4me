@@ -15,6 +15,7 @@ import { useEffect, useRef, useState, type ChangeEvent, type FocusEvent } from '
 import { formatWeight } from '@/components/format';
 import { formatPlateBreakdown, plateBreakdown, STANDARD_BAR_KG, availablePlatesKg } from '@/core/plates';
 import { PAIN_AREAS, type PainArea, type PrescribedSet } from '@/core/types';
+import { PlateBar } from './PlateBar';
 
 export interface LoggedValue {
   reps?: number;
@@ -292,12 +293,18 @@ export function SetRow({
                 onUseHint={() => { setWeight(hintKg); setAskedForWeight(false); }}
               />
               {plates && (
-                <Typography variant="caption" color="text.secondary" className="tnum">
-                  {plates.perSide.length === 0
-                    ? 'Empty bar'
-                    : `${formatPlateBreakdown(plates)} per side`}
-                  {!plates.exact && ` (closest at ${formatWeight(plates.totalKg)})`}
-                </Typography>
+                <Box>
+                  <Typography variant="caption" color="text.secondary" className="tnum">
+                    {plates.perSide.length === 0
+                      ? 'Empty bar'
+                      : `${formatPlateBreakdown(plates)} per side`}
+                    {!plates.exact && ` (closest at ${formatWeight(plates.totalKg)})`}
+                  </Typography>
+                  <PlateBar
+                    breakdown={plates}
+                    label={`${formatPlateBreakdown(plates)} per side${plates.exact ? '' : `, closest to ${formatWeight(plates.totalKg)}`}`}
+                  />
+                </Box>
               )}
             </Stack>
           ) : loadable && (

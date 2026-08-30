@@ -19,7 +19,7 @@ export default function NotFound() {
         textAlign: 'center', px: 3,
       }}
     >
-      <SearchOffIcon sx={{ fontSize: 48, color: 'text.secondary' }} />
+      <SearchOffIcon aria-hidden sx={{ fontSize: 64, color: 'text.secondary', opacity: 0.4 }} />
       <Typography variant="h2">Page not found</Typography>
       <Typography color="text.secondary" sx={{ maxWidth: 320 }}>
         There&apos;s nothing here. It may have moved, or the link was wrong.

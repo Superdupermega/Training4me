@@ -69,3 +69,22 @@ export function formatPlateBreakdown(breakdown: PlateBreakdown): string {
     .map((p) => (Number.isInteger(p) ? String(p) : p.toFixed(2).replace(/0$/, '').replace(/\.$/, '')))
     .join(' + ');
 }
+
+export interface PlateSegment {
+  weightKg: number;
+  /** This segment's share of the bar's total rendered width, 0-1, summing to 1 across the whole side. */
+  widthFraction: number;
+}
+
+/**
+ * The layout maths for drawing `perSide` as a stacked bar (docs/chunks/
+ * chunk-24-craft.md §3) — heaviest first, each segment's width proportional
+ * to its own weight, so a 20 reads visibly wider than a 2.5. Pure: no
+ * colour, no SVG, nothing DOM-shaped — that lives in the component next to
+ * `SetRow.tsx` that actually draws these.
+ */
+export function plateLayout(perSide: number[]): PlateSegment[] {
+  const total = perSide.reduce((sum, p) => sum + p, 0);
+  if (total <= 0) return [];
+  return perSide.map((weightKg) => ({ weightKg, widthFraction: weightKg / total }));
+}

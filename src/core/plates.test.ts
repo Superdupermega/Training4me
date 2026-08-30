@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { availablePlatesKg, formatPlateBreakdown, plateBreakdown } from './plates';
+import {
+  availablePlatesKg, formatPlateBreakdown, plateBreakdown, plateLayout,
+} from './plates';
 
 describe('plateBreakdown', () => {
   it('loads an empty bar for a target at or below the bar weight', () => {
@@ -59,5 +61,30 @@ describe('formatPlateBreakdown', () => {
 
   it('does not print a trailing zero on a whole-number plate', () => {
     expect(formatPlateBreakdown(plateBreakdown(100))).toBe('25 + 15');
+  });
+});
+
+describe('plateLayout', () => {
+  it('gives each segment a width proportional to its own weight', () => {
+    const segments = plateLayout([20, 5]);
+    expect(segments).toEqual([
+      { weightKg: 20, widthFraction: 0.8 },
+      { weightKg: 5, widthFraction: 0.2 },
+    ]);
+  });
+
+  it('fractions always sum to 1 across the whole side', () => {
+    const segments = plateLayout([25, 15, 2.5, 1.25]);
+    const total = segments.reduce((sum, s) => sum + s.widthFraction, 0);
+    expect(total).toBeCloseTo(1, 10);
+  });
+
+  it('is empty for an unloaded bar (no plates on either side)', () => {
+    expect(plateLayout([])).toEqual([]);
+  });
+
+  it('includes a micro plate as its own proportionally tiny segment', () => {
+    const segments = plateLayout([25, 0.5]);
+    expect(segments[1]!.widthFraction).toBeCloseTo(0.5 / 25.5, 10);
   });
 });

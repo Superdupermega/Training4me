@@ -12,6 +12,8 @@ import { ExerciseContextLine } from '@/components/exercises/ExerciseContext';
 import { getExercise } from '@/core/library/exercises';
 import type { SessionBlock } from '@/core/types';
 import type { ExerciseContext } from '@/server/exerciseContext';
+import { BLOCK_KIND_META } from './blockKindMeta';
+import { RampLadder } from './RampLadder';
 import { SetRow, type LoggedValue } from './SetRow';
 
 interface Props {
@@ -50,6 +52,7 @@ export function ListView({
         const blockSets = block.exercises.flatMap((e) =>
           e.sets.filter((s) => s.kind !== 'ramp').map((s) => keyFor(block.letter, e.slot, s.setNumber)));
         const blockDone = blockSets.length > 0 && blockSets.every((k) => logged[k]);
+        const { icon: KindIcon, color: kindColor } = BLOCK_KIND_META[block.kind];
         return (
           <Accordion
             key={block.letter}
@@ -60,6 +63,8 @@ export function ListView({
           >
             <AccordionSummary expandIcon={<ExpandMoreIcon />}>
               <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center', width: '100%' }}>
+                {/* The main lift should be visibly the main lift without reading a word. */}
+                <KindIcon aria-hidden fontSize="small" sx={{ color: kindColor }} />
                 <Typography variant="overline" color={blockDone ? 'primary' : 'text.secondary'}>
                   {block.letter}
                 </Typography>
@@ -82,6 +87,33 @@ export function ListView({
               )}
               {block.exercises.map((be) => {
                 const exercise = getExercise(be.exerciseId);
+                // Presentation only — grouping ramp sets under a ladder does
+                // not change which sets exist or how they're keyed/logged.
+                // `totals`/`blockDone` (SessionPlayer.tsx) filter on
+                // `s.kind !== 'ramp'` independently of this split.
+                const ramps = be.sets.filter((s) => s.kind === 'ramp');
+                const working = be.sets.filter((s) => s.kind !== 'ramp');
+                const renderSet = (set: (typeof be.sets)[number]) => {
+                  const id = keyFor(block.letter, be.slot, set.setNumber);
+                  return (
+                    <SetRow
+                      key={id}
+                      set={set}
+                      logged={logged[id]}
+                      increment={increment}
+                      barbell={exercise.equipment.includes('barbell')}
+                      microPlates={microPlates}
+                      loadable={exercise.loadable}
+                      suggestedWeightKg={contexts?.[be.exerciseId]?.last?.topSet.weightKg
+                        ?? contexts?.[be.exerciseId]?.expected?.weightKg ?? null}
+                      carriedWeightKg={carried[slotKeyFor(block.letter, be.slot)] ?? null}
+                      expanded={expandedSet === id}
+                      onExpand={() => onExpand(id)}
+                      onComplete={(value) =>
+                        onComplete(block, be.slot, be.exerciseId, set.setNumber, set.restSec, value)}
+                    />
+                  );
+                };
                 return (
                   <Box key={be.slot} sx={{ mb: 1 }}>
                     <Stack sx={{ px: 2, pt: 1 }}>
@@ -93,27 +125,8 @@ export function ListView({
                       <Typography variant="body2" color="text.secondary">{be.cue}</Typography>
                       <ExerciseContextLine context={contexts?.[be.exerciseId]} />
                     </Stack>
-                    {be.sets.map((set) => {
-                      const id = keyFor(block.letter, be.slot, set.setNumber);
-                      return (
-                        <SetRow
-                          key={id}
-                          set={set}
-                          logged={logged[id]}
-                          increment={increment}
-                          barbell={exercise.equipment.includes('barbell')}
-                          microPlates={microPlates}
-                          loadable={exercise.loadable}
-                          suggestedWeightKg={contexts?.[be.exerciseId]?.last?.topSet.weightKg
-                            ?? contexts?.[be.exerciseId]?.expected?.weightKg ?? null}
-                          carriedWeightKg={carried[slotKeyFor(block.letter, be.slot)] ?? null}
-                          expanded={expandedSet === id}
-                          onExpand={() => onExpand(id)}
-                          onComplete={(value) =>
-                            onComplete(block, be.slot, be.exerciseId, set.setNumber, set.restSec, value)}
-                        />
-                      );
-                    })}
+                    <RampLadder ramps={ramps}>{ramps.map(renderSet)}</RampLadder>
+                    {working.map(renderSet)}
                   </Box>
                 );
               })}

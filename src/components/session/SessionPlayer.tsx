@@ -15,7 +15,7 @@ import Typography from '@mui/material/Typography';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { clock, minutes } from '@/components/format';
+import { clock, minutes, setTargetText } from '@/components/format';
 import { TopBar } from '@/components/nav/TopBar';
 import { getExercise } from '@/core/library/exercises';
 import type { BlockExercise, Readiness, SessionBlock } from '@/core/types';
@@ -24,6 +24,7 @@ import type { ExerciseContext } from '@/server/exerciseContext';
 import type { LoggedSetRow, SessionRow } from '@/server/repo';
 import { visuallyHidden } from '@/components/visuallyHidden';
 import { FocusView } from './FocusView';
+import type { NextSetPreview } from './RestTimer';
 import type { LoggedValue } from './SetRow';
 import { drain, enqueue, peek } from './outbox';
 
@@ -139,6 +140,39 @@ function seedCursor(blocks: SessionBlock[], logged: Record<string, LoggedValue>)
   return { blockLetter: lastBlock?.letter ?? '', slot: lastExercise?.slot ?? '' };
 }
 
+/**
+ * What the rest timer's preview shows (chunk 24 §1) — the very next
+ * prescribed set after the one just completed: the next set of the same
+ * movement if there is one, else the first set of the next movement in
+ * session order. `null` once there is nothing left in the session.
+ */
+function findNextSet(
+  blocks: SessionBlock[], blockLetter: string, slot: string, setNumber: number,
+): NextSetPreview | null {
+  const block = blocks.find((b) => b.letter === blockLetter);
+  const exercise = block?.exercises.find((e) => e.slot === slot);
+  const withinSame = exercise?.sets.find((s) => s.setNumber > setNumber);
+  if (withinSame) {
+    return {
+      exerciseName: getExercise(exercise!.exerciseId).name, setNumber: withinSame.setNumber,
+      target: setTargetText(withinSame), weightKg: withinSame.weightKg,
+    };
+  }
+
+  const movements = allMovements(blocks);
+  const idx = movements.findIndex((m) => m.blockLetter === blockLetter && m.slot === slot);
+  const nextMovement = idx === -1 ? undefined : movements[idx + 1];
+  if (!nextMovement) return null;
+  const nextBlock = blocks.find((b) => b.letter === nextMovement.blockLetter);
+  const nextExercise = nextBlock?.exercises.find((e) => e.slot === nextMovement.slot);
+  const firstSet = nextExercise?.sets[0];
+  if (!nextExercise || !firstSet) return null;
+  return {
+    exerciseName: getExercise(nextExercise.exerciseId).name, setNumber: firstSet.setNumber,
+    target: setTargetText(firstSet), weightKg: firstSet.weightKg,
+  };
+}
+
 interface Props {
   session: SessionRow;
   increment: number;
@@ -172,7 +206,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
   // `askReadiness` itself is a one-way flag, not a derived value.
   const [view, setView] = useState<'focus' | 'list'>(session.status === 'in_progress' ? 'focus' : 'list');
   const [cursor, setCursor] = useState<Cursor>(() => seedCursor(session.blocks, initialLogged));
-  const [rest, setRest] = useState<{ endsAt: number; totalSec: number } | null>(null);
+  const [rest, setRest] = useState<{ endsAt: number; totalSec: number; nextSet: NextSetPreview | null } | null>(null);
   const [queued, setQueued] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
@@ -265,7 +299,12 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
 
       setLogged((prev) => ({ ...prev, [id]: value }));
       setExpandedSet(null);
-      if (restSec > 0) setRest({ endsAt: Date.now() + restSec * 1000, totalSec: restSec });
+      if (restSec > 0) {
+        setRest({
+          endsAt: Date.now() + restSec * 1000, totalSec: restSec,
+          nextSet: findNextSet(blocks, block.letter, slot, setNumber),
+        });
+      }
 
       // What this set was done with becomes what the rest of the movement
       // opens at — the backoff below may still take it down a notch.
@@ -471,9 +510,9 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
 
       {rest && (
         <RestTimer
-          endsAt={rest.endsAt} totalSec={rest.totalSec}
+          endsAt={rest.endsAt} totalSec={rest.totalSec} nextSet={rest.nextSet}
           onAdjust={(delta) => setRest((prev) => prev && {
-            endsAt: prev.endsAt + delta * 1000, totalSec: Math.max(15, prev.totalSec + delta),
+            ...prev, endsAt: prev.endsAt + delta * 1000, totalSec: Math.max(15, prev.totalSec + delta),
           })}
           onDismiss={() => setRest(null)}
         />

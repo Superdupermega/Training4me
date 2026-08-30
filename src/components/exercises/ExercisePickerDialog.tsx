@@ -22,6 +22,7 @@ import { GROUP_LABEL, MUSCLE_GROUPS, MUSCLE_LABEL, type MuscleGroup } from '@/co
 import { getExerciseContexts } from '@/server/actions';
 import type { ExerciseContext } from '@/server/exerciseContext';
 import type { Exercise } from '@/core/types';
+import { PatternGlyph } from './patternGlyphs';
 
 const Transition = forwardRef(function Transition(
   props: TransitionProps & { children: React.ReactElement },
@@ -98,7 +99,8 @@ export function ExercisePickerDialog({ open, onClose, onPick }: Props) {
             const muscles = [...ex.primaryMuscles].map((m) => MUSCLE_LABEL[m]).join(', ');
             const contextLine = summariseContext(contexts[ex.id]);
             return (
-              <ListItemButton key={ex.id} onClick={() => onPick(ex)} sx={{ py: 1.25, px: 2 }}>
+              <ListItemButton key={ex.id} onClick={() => onPick(ex)} sx={{ py: 1.25, px: 2, gap: 1.5 }}>
+                <PatternGlyph pattern={ex.pattern} />
                 <ListItemText
                   primary={ex.name}
                   secondary={contextLine ? `${muscles} · ${contextLine}` : muscles}

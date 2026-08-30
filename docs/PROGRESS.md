@@ -858,6 +858,69 @@ standard `chunk-24-craft.md` §1's caveat asks for later.
 **Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
 unrelated to this chunk.
 
+## Chunk 24 — Craft — 2026-08-30
+**Landed:** All eight independent items from `chunk-24-craft.md`, findings
+#9–#16. Shipped together in one pass rather than split across sessions —
+the brief allowed either — but each is genuinely independent and reviewable
+on its own.
+
+1. **Rest timer, properly.** `RestTimer.tsx` now shows "Up next: Set 3 ·
+   5 reps @ 100 kg · Bench Press" (computed in `SessionPlayer.tsx`'s
+   `findNextSet`, walking to the next set of the same movement, else the
+   first set of the next movement in session order), an optional
+   tap-to-expand full-screen mode (`displayLarge`, dimmed background, not
+   the default), and a best-effort backgrounded notification via
+   `postMessage` to the service worker (`public/sw.js` gained a `message`
+   handler). **Not verified on a real phone** — see DECISIONS.md; this is
+   recorded as an open question, not a working feature.
+2. **Block identity.** New `blockKindMeta.tsx`: `Record<BlockKind, {icon,
+   color}>`, colours drawn from existing roles only. Applied in both
+   `ListView.tsx` and `FocusView.tsx`.
+3. **Plate visualisation.** `plateLayout()` (pure, unit-tested) added next
+   to `plateBreakdown()` in `src/core/plates.ts`; new `PlateBar.tsx` draws
+   it as a stacked bar with IWF-ish colours, dashed border for a
+   closest-not-exact load. The text line stays, now as the bar's
+   `aria-label`.
+4. **Empty states.** `EmptyChart.tsx` gained one shared abstract glyph (a
+   rising line with two points) — copy unchanged. `offline`/`not-found`
+   already had `WifiOffIcon`/`SearchOffIcon`; bumped to the spec's ~64px
+   and made `aria-hidden` explicit rather than relied-upon-default.
+5. **Exercise pattern glyphs.** New `patternGlyphs.tsx`: one hand-drawn
+   stroke glyph per `MovementPattern` (all 13, not just "roughly ten" —
+   the union has 13 members), exhaustive by construction. In
+   `ExerciseBrowser.tsx`, `ExercisePickerDialog.tsx`, and the exercise
+   detail page (title + alternatives list).
+6. **Streak on Today.** `ConsistencySummary` gained `currentStreak`,
+   computed from the same rows `consistency()` already fetches — no new
+   query. `/today` shows "{completed}/{total} sessions this week ·
+   {streak} in a row", server-rendered, no new client component.
+7. **Warm-up ladder.** New `RampLadder.tsx` wraps a movement's ramp
+   `SetRow`s under a "Warm-up ladder" heading and a "empty bar → 60 → 80,
+   then work" summary line — presentation only. `totals`/`blockDone` still
+   filter `kind !== 'ramp'` exactly as before; a regression test asserts
+   the counter doesn't move when a ramp set is logged.
+8. **Heatmap cells.** 12px → 20px, each cell keyboard-focusable with a
+   CSS-only (`:hover`/`:focus` sibling reveal, no client JS added) tooltip
+   showing its date and count. Grid still scrolls inside its own box.
+
+**Deviated:** one, fully reasoned in `DECISIONS.md` — the rest-timer
+notification's real backgrounded behaviour is unverified, not confirmed,
+because this environment has no physical device to test it on.
+
+**Verified:** 401 tests (369 → +32: 4 `plateLayout`, 2 `BLOCK_KIND_META`,
+2 `PATTERN_GLYPH`, 5 `RestTimer`, 4 `SessionPlayer` ramp-presentation
+cases including the #14 regression, plus incidental coverage from existing
+suites still passing unmodified). `pnpm test && pnpm lint && pnpm
+typecheck && pnpm build && pnpm verify:actions` all clean. No route budget
+newly blown — `/session/[id]` 233 → 234 kB, `/exercises` 216 → 217 kB,
+both within a rounding error of chunk 22/23's own numbers, same
+pre-existing overage as already reported there.
+
+**Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
+unrelated to this chunk. (Note: this is finding/backlog item "#24" from
+`07-PRODUCTION-REVIEW.md`, an unrelated numbering collision with this
+chunk's own name — chunk 24 itself is fully landed.)
+
 ## Chunk 23 — The reward loop — 2026-08-30
 **Landed:** All five items from `chunk-23-reward-loop.md`, findings #4–#8.
 Live Supabase access was available this session (unlike every prior chunk —

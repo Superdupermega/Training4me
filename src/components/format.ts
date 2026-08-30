@@ -24,6 +24,13 @@ export function formatWeight(kg: number | undefined | null): string {
   return Number.isInteger(kg) ? `${kg} kg` : `${kg.toFixed(2).replace(/0$/, '')} kg`;
 }
 
+/** "5 reps" / "30 m" / "2 min" — one set's own target, no weight. What `SetRow`'s row label and `RestTimer`'s next-set preview both show. */
+export function setTargetText(set: PrescribedSet): string {
+  if (set.distanceM) return `${set.distanceM} m${set.perSide ? '/side' : ''}`;
+  if (set.durationSec) return `${Math.round(set.durationSec / 60)} min${set.perSide ? '/side' : ''}`;
+  return `${set.reps}${set.perSide ? '/side' : ''} reps`;
+}
+
 /** "4 × 5 @ 92.5 kg" — the line you actually read between sets. */
 export function describeSets(sets: PrescribedSet[]): string {
   const working = sets.filter((s) => s.kind !== 'ramp');

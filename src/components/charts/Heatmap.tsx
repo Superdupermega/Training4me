@@ -53,29 +53,58 @@ export function Heatmap({
     return 'primary.main';
   };
 
+  // 20px, up from the original 12px — a comfortable tap target, not just a
+  // pixel. Each cell reveals its date and set count on tap or focus via a
+  // plain CSS sibling reveal (`.hm-cell:hover + .hm-tip`), the same
+  // no-client-JS technique `LineChart.tsx`'s tap-to-inspect uses — this
+  // component still ships zero client JS.
+  const CELL = 20;
+
   return (
     <Box>
+      <style>{'.hm-cell{cursor:pointer}.hm-cell:hover+.hm-tip,.hm-cell:focus+.hm-tip{opacity:1}'}</style>
       <Stack direction="row" spacing={0.5}>
         <Stack spacing={0.5} sx={{ mr: 0.5 }}>
           {WEEKDAY_LABEL.map((d, i) => (
-            <Typography key={i} variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', height: 12, lineHeight: '12px' }}>
+            <Typography key={i} variant="caption" color="text.secondary" sx={{ fontSize: '0.6rem', height: CELL, lineHeight: `${CELL}px` }}>
               {i % 2 === 0 ? d : ''}
             </Typography>
           ))}
         </Stack>
+        {/*
+          The grid scrolls inside this box, not the page — `overflowX: auto`
+          here, nothing wider on the ancestor chain, confirmed at 20px cells
+          (up from 12px) with a 12-week window.
+        */}
         <Stack direction="row" spacing={0.5} sx={{ overflowX: 'auto' }}>
           {columns.map((col, ci) => (
             <Stack key={ci} spacing={0.5}>
               {col.map((cell, ri) => (
-                <Box
-                  key={ri}
-                  role={cell ? 'img' : undefined}
-                  aria-label={cell ? `${cell.date}: ${cell.value} sets` : undefined}
-                  sx={{
-                    width: 12, height: 12, borderRadius: 0.5,
-                    bgcolor: cell ? shade(cell.value) : 'transparent',
-                  }}
-                />
+                <Box key={ri} sx={{ position: 'relative' }}>
+                  <Box
+                    className={cell ? 'hm-cell' : undefined}
+                    tabIndex={cell ? 0 : undefined}
+                    role={cell ? 'img' : undefined}
+                    aria-label={cell ? `${cell.date}: ${cell.value} sets` : undefined}
+                    sx={{
+                      width: CELL, height: CELL, borderRadius: 0.5,
+                      bgcolor: cell ? shade(cell.value) : 'transparent',
+                    }}
+                  />
+                  {cell && (
+                    <Box
+                      className="hm-tip"
+                      sx={{
+                        position: 'absolute', bottom: `calc(100% + 4px)`, left: '50%', transform: 'translateX(-50%)',
+                        opacity: 0, transition: 'opacity 120ms ease', pointerEvents: 'none', zIndex: 1,
+                        bgcolor: 'surfaceContainerHigh.main', color: 'text.primary', borderRadius: 1,
+                        px: 0.75, py: 0.25, whiteSpace: 'nowrap',
+                      }}
+                    >
+                      <Typography variant="caption" className="tnum">{cell.date}: {cell.value}</Typography>
+                    </Box>
+                  )}
+                </Box>
               ))}
             </Stack>
           ))}
