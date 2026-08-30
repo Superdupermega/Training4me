@@ -8,17 +8,17 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 const SUPABASE_URL = 'https://evlxbewvsgrlncvtagmf.supabase.co';
 
 /**
- * Connects with the publishable key by default — the same key every other app
- * on this account uses, the kind meant to ship in a browser bundle. That means
- * the app works with zero configuration, matching how the rest of the stack
- * behaves: nothing to paste into Vercel, nothing to get wrong.
- *
- * The t4m_ tables carry RLS policies that allow this key through. The app's
- * own PIN gate, not the database, is what keeps a stranger out.
- *
- * Setting SUPABASE_SECRET_KEY in Vercel switches to the secret key instead —
- * tightening the database itself, not just the app's front door — and needs no
- * code change to take effect.
+ * Falls back to the publishable key only when `SUPABASE_SECRET_KEY` is
+ * unset — which, since docs/08-RLS-TIGHTENING.md was applied on
+ * 2026-08-26, means every `t4m_` table refuses it outright: `pg_policies`
+ * on the live project shows one `service_role`-only policy on each,
+ * nothing granted to `anon`/`authenticated`. This fallback is not "the app
+ * still works, just less locked down" — it is "every read comes back
+ * empty and every write fails" — kept only so a missing key fails as
+ * loud, legible Postgres/PostgREST errors instead of `db()` itself
+ * throwing before a request even reaches Supabase. See `README.md`
+ * ("Database access") for what actually has to be configured, in every
+ * environment including local dev.
  */
 const PUBLISHABLE_KEY = 'sb_publishable_vpwx3wRY7j-5xsIe0-jjyA_olXG2fl9';
 

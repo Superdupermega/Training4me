@@ -18,11 +18,14 @@ aerobic capacity so you stay mobile and uninjured while getting genuinely strong
 
 ## Setup
 
-The app connects to Supabase with the project's **publishable key**, the same
-public key every other app on this account uses — the one that is *meant* to
-ship in a browser bundle. There is nothing to paste in to run it.
+The app connects to Supabase, but not with the publishable key alone anymore
+— see *Database access* below before you assume `pnpm dev` shows real data.
 
-1. `pnpm install && pnpm dev` → http://localhost:3000
+1. `pnpm install`
+2. Set `SUPABASE_SECRET_KEY` in `.env.local` — see *Database access* for
+   where to get it. Without it the dev server still boots, but every
+   `t4m_` read and write comes back empty or fails outright.
+3. `pnpm dev` → http://localhost:3000
 
 Optionally, set `APP_PIN` in `.env.local` to test the lock screen locally; it
 does nothing by default outside production (see below).
@@ -30,20 +33,29 @@ does nothing by default outside production (see below).
 The training tables live in the **cyberpunk-vibe01** Supabase project, prefixed
 `t4m_` and separate from that project's other tables — nothing else in that
 project is reachable through this app, and this app touches nothing else in
-it either. RLS is enabled on every one of them, but "scoped" undersells what
-that means today: with the publishable key, each policy is currently
-`USING (true)` for both `anon` and `authenticated` — full read/write on
-every `t4m_` table, not narrowed to anything. It's isolation from the rest
-of that Supabase project, not restriction within it. See the trade-off
-below, and *Tightening it* for closing it.
+it either.
 
-**The trade-off, stated plainly:** because the publishable key is public by
-design, the `t4m_` tables are reachable by anyone who has it — which is the
-same key already visible in every Supabase app's browser network tab, this
-account's included. What actually keeps a stranger out is the app's own PIN
-gate (below), not the database. For a personal training log that is a
-reasonable line to draw. If you want the database itself locked down too, see
-*Tightening it* below — it is one environment variable, no code change.
+### Database access
+
+`pg_policies` on the live project shows all 14 `t4m_` tables carrying exactly
+one `service_role`-only policy each, with no `anon`/`authenticated` grant
+anywhere — confirmed directly against the project, not assumed. That has
+been true since 2026-08-26 (`docs/08-RLS-TIGHTENING.md`); this README
+described an earlier, more open state (`USING (true)` for `anon` and
+`authenticated`) as an open trade-off for longer than it should have. There
+is no trade-off left to state: the publishable key cannot read or write a
+`t4m_` row at all, in any environment. Only
+`SUPABASE_SECRET_KEY` — set in Vercel for production (already configured
+there), and in `.env.local` for local dev — reaches the database, exactly
+the way `src/server/db.ts` is written: it defaults to the publishable key
+only because that used to be enough, and now it is enough for nothing.
+Get the secret key from **cyberpunk-vibe01 → Project Settings → API Keys
+→ Secret keys**; it must never go in the repository, which is public.
+
+The app's own PIN gate (below) is still the thing a human hits first, but
+it is no longer the only thing standing between a stranger and the data —
+the database refuses the publishable key regardless of whether the PIN
+gate is even reached.
 
 ## Deploying to Vercel
 
@@ -76,8 +88,10 @@ npx vercel env add APP_PIN production   # paste a passphrase when prompted
 npx vercel --prod                        # rebuild — env changes need a new build
 ```
 
-**Make it a passphrase, not four digits.** This is genuinely the only thing
-between the internet and your log. The cookie stores a SHA-256 hash rather
+**Make it a passphrase, not four digits.** This is the thing standing between
+the internet and the *app* — the database behind it refuses an unauthenticated
+request on its own now (see *Database access* above), but the PIN is still
+what a human actually hits first. The cookie stores a SHA-256 hash rather
 than the PIN itself, comparison is constant-time, and wrong guesses from one
 IP are rate-limited server-side (8 per 15 minutes, enforced in Postgres —
 not just a client-visible delay) — none of which saves a four-digit PIN from
@@ -89,22 +103,26 @@ as easy to type on a phone.
 > build time. If the site returns `503 APP_PIN is not set` when you know you
 > set it: Deployments → the latest one → ⋯ → **Redeploy**.
 
-### Tightening it: lock the database too, not just the front door
+### The database itself: already locked, not just the front door
 
-Set `SUPABASE_SECRET_KEY` in Vercel to the `sb_secret_...` key from
+`SUPABASE_SECRET_KEY` is already set in Vercel — see *Database access*
+above for why it has to be, not just why it might be worth doing. If you
+are standing up a fresh deployment of this repo rather than continuing the
+existing one: set `SUPABASE_SECRET_KEY` to the `sb_secret_...` key from
 **cyberpunk-vibe01 → Project Settings → API Keys → Secret keys**, then
-redeploy. The app picks up a configured secret key automatically and switches
-to it — no code change. This closes the trade-off above: with a secret key
-configured, only the server can reach the `t4m_` tables at all, publishable
-key or not. This value must never go in the repository, which is public.
+redeploy — the app picks up a configured secret key automatically and
+switches to it, no code change. Skip this and the deployment boots but
+every `t4m_` read and write fails, publishable key or not. This value must
+never go in the repository, which is public.
 
 **Make `APP_PIN` a passphrase, not four digits.** With Vercel Authentication
-turned off, this is the only thing between the internet and your log. The cookie
-stores a SHA-256 hash rather than the value itself, comparison is constant-time,
-and wrong guesses from one IP are rate-limited server-side — but none of that
-saves a four-digit PIN from being guessed inside that budget. Something like
-`bench-105-in-may` is easy to type on a phone and not worth anyone's time to
-attack.
+turned off, this is what a human actually hits first — the database itself
+refuses an unauthenticated request regardless (above), but the PIN is still
+the app's own front door. The cookie stores a SHA-256 hash rather than the
+value itself, comparison is constant-time, and wrong guesses from one IP are
+rate-limited server-side — but none of that saves a four-digit PIN from being
+guessed inside that budget. Something like `bench-105-in-may` is easy to type
+on a phone and not worth anyone's time to attack.
 
 ## Commands
 

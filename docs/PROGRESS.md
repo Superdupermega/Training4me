@@ -921,6 +921,27 @@ unrelated to this chunk. (Note: this is finding/backlog item "#24" from
 `07-PRODUCTION-REVIEW.md`, an unrelated numbering collision with this
 chunk's own name — chunk 24 itself is fully landed.)
 
+## README §6 — 2026-08-30
+**Landed:** `docs/10-FEEL-AND-POLISH.md` §6's documentation defect, fixed.
+`README.md` described the database as `USING (true)` for `anon`/
+`authenticated` and framed tightening it as an optional future step; that
+has been false since 2026-08-26. Rewrote "Setup" into a new "Database
+access" section stating the real, re-confirmed-live state (`pg_policies`:
+14/14 `t4m_` tables, one `service_role`-only policy each) and, more
+importantly, its real consequence the README hadn't caught up to either:
+**local dev now needs `SUPABASE_SECRET_KEY` in `.env.local`** — the
+publishable-key fallback in `src/server/db.ts` (comment also fixed) now
+reaches zero rows on every table, not a narrowed set. Renamed "Tightening
+it" (implying an optional step) to reflect that it is already done in
+production, with instructions kept for standing up a fresh deployment.
+Fixed two now-contradictory "this is the only thing between the internet
+and your log" claims about `APP_PIN` for the same reason.
+
+**Verified:** re-queried `pg_policies` directly against the live project
+before writing anything (not reused from chunk 23's earlier query, in case
+anything had changed) — same result, 14/14. `pnpm test && pnpm lint &&
+pnpm typecheck && pnpm build && pnpm verify:actions` all clean.
+
 ## Chunk 23 — The reward loop — 2026-08-30
 **Landed:** All five items from `chunk-23-reward-loop.md`, findings #4–#8.
 Live Supabase access was available this session (unlike every prior chunk —
