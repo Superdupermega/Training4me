@@ -51,12 +51,13 @@ interface SessionExportRow {
   title: string;
   week_number: number;
   day_number: number;
+  notes: string | null;
 }
 
-const CSV_HEADER = [
+export const CSV_HEADER = [
   'date', 'session_title', 'week', 'day', 'block', 'slot',
   'exercise_id', 'exercise_name', 'set_number', 'reps', 'weight_kg', 'rpe',
-  'distance_m', 'duration_sec', 'skipped', 'pain_flag', 'logged_at',
+  'distance_m', 'duration_sec', 'skipped', 'pain_flag', 'logged_at', 'session_notes',
 ];
 
 /** RFC 4180: wrap in quotes and double up any embedded quote, only when the field actually needs it. */
@@ -92,6 +93,11 @@ export async function exportLoggedSetsCsv(): Promise<string> {
       set.reps ?? '', set.weight_kg ?? '', set.rpe ?? '',
       set.distance_m ?? '', set.duration_sec ?? '', set.skipped, set.pain_flag ?? '',
       set.client_logged_at ?? set.created_at,
+      // Repeated on every set of the session, not deduplicated — this is a
+      // per-set CSV, and a note that only appeared on the session's first
+      // row would look like it belonged to that one set. The full JSON
+      // export already carries the canonical one-row-per-session shape.
+      session?.notes ?? '',
     ].map(csvField).join(','));
   }
   return lines.join('\r\n');

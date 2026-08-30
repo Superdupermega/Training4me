@@ -78,6 +78,16 @@ export interface ProgramRow {
    * duplicated into a routine first.
    */
   routineId: string | null;
+  /**
+   * `rollOverTrainingMaxes()`'s own `{exerciseId, from, to, reason}[]`,
+   * written onto this row by `startNextBlock` at the moment the block
+   * actually finishes and the next one is generated — this is what makes
+   * `/program/complete`'s retrospective survive a reload rather than needing
+   * the value threaded through component state. `null` until that happens
+   * (a block not yet finished, or a program abandoned rather than completed
+   * never gets one).
+   */
+  tmChanges: { exerciseId: string; from: number; to: number; reason: string }[] | null;
 }
 
 interface SessionRecord {
@@ -163,21 +173,48 @@ export async function setTrainingMaxes(
   if (error) throw new Error(error.message);
 }
 
+const toProgram = (data: Record<string, unknown>): ProgramRow => ({
+  id: data.id as string, name: data.name as string, weeks: data.weeks as number,
+  daysPerWeek: data.days_per_week as number, startDate: data.start_date as string,
+  status: data.status as string, input: data.input as GeneratorInput,
+  routineId: (data.routine_id as string | null) ?? null,
+  tmChanges: (data.tm_changes as ProgramRow['tmChanges']) ?? null,
+});
+
 export const getActiveProgram = unstable_cache(
   async (): Promise<ProgramRow | null> => {
     const { data, error } = await db()
       .from('t4m_program').select('*').eq('status', 'active').maybeSingle();
     if (error) throw new Error(error.message);
-    if (!data) return null;
-    return {
-      id: data.id, name: data.name, weeks: data.weeks, daysPerWeek: data.days_per_week,
-      startDate: data.start_date, status: data.status, input: data.input,
-      routineId: data.routine_id ?? null,
-    };
+    return data ? toProgram(data) : null;
   },
   ['t4m-active-program'],
   { tags: [TAGS.program] },
 );
+
+/**
+ * Any program by id, active or not — the block retrospective (chunk 23)
+ * reads a just-finished block this way, after `startNextBlock` has already
+ * moved it off `active`.
+ */
+export const getProgram = unstable_cache(
+  async (id: string): Promise<ProgramRow | null> => {
+    const { data, error } = await db().from('t4m_program').select('*').eq('id', id).maybeSingle();
+    if (error) throw new Error(error.message);
+    return data ? toProgram(data) : null;
+  },
+  ['t4m-get-program'],
+  { tags: [TAGS.program] },
+);
+
+/** Written once, at the moment `rollOverTrainingMaxes()` actually runs — see `ProgramRow.tmChanges`. */
+export async function saveTmChanges(
+  programId: string,
+  changes: NonNullable<ProgramRow['tmChanges']>,
+): Promise<void> {
+  const { error } = await db().from('t4m_program').update({ tm_changes: changes }).eq('id', programId);
+  if (error) throw new Error(error.message);
+}
 
 /** Replaces any active program. Planned sessions go with it; logs are kept. */
 export async function persistProgram(program: Program): Promise<string> {

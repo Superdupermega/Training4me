@@ -8,15 +8,17 @@ import EmojiEventsIcon from '@mui/icons-material/EmojiEvents';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Snackbar from '@mui/material/Snackbar';
 import Stack from '@mui/material/Stack';
+import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
 import { useRouter } from 'next/navigation';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { minutes } from '@/components/format';
 import { TopBar } from '@/components/nav/TopBar';
 import { getExercise } from '@/core/library/exercises';
 import type { SessionBlock } from '@/core/types';
-import { logSets } from '@/server/actions';
+import { logSets, saveSessionNotes } from '@/server/actions';
 import type { LoggedSetRow, Pr, SessionRow } from '@/server/repo';
+import { PRMoment } from './PRMoment';
 import { SetRow, type LoggedValue } from './SetRow';
 
 const key = (blockLetter: string, slot: string, setNumber: number) =>
@@ -56,6 +58,10 @@ export function SessionSummary({ session, increment, initialLogged, prs, microPl
   const [logged, setLogged] = useState<Record<string, LoggedValue>>(initialLogged);
   const [expandedSet, setExpandedSet] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+  const [notes, setNotes] = useState(session.notes ?? '');
+  // The last value actually persisted — a blur that didn't change anything
+  // (tabbing through without editing) must not fire a save.
+  const savedNotes = useRef(session.notes ?? '');
 
   const prsByExercise = useMemo(() => {
     const map = new Map<string, Pr[]>();
@@ -103,6 +109,13 @@ export function SessionSummary({ session, increment, initialLogged, prs, microPl
     return { total: all.length, done: all.filter((k) => logged[k]).length };
   }, [session.blocks, logged]);
 
+  const saveNotes = useCallback(async () => {
+    if (notes === savedNotes.current) return; // nothing changed — don't fire per idle blur
+    const result = await saveSessionNotes(session.id, notes);
+    if (result.ok) savedNotes.current = notes;
+    else setToast(`Could not save the note: ${result.error}`);
+  }, [notes, session.id]);
+
   return (
     <Box sx={{ minHeight: '100dvh', pb: 6 }}>
       <TopBar title={session.title} backHref="/today" />
@@ -121,6 +134,16 @@ export function SessionSummary({ session, increment, initialLogged, prs, microPl
             />
           )}
         </Stack>
+
+        <PRMoment prs={prs} />
+
+        <TextField
+          label="Notes" placeholder="How did it feel? Anything worth remembering next time?"
+          multiline minRows={2} fullWidth sx={{ mb: 2 }}
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          onBlur={saveNotes}
+        />
 
         {session.blocks.map((block) => (
           <Accordion

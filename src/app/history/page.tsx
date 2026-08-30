@@ -111,6 +111,12 @@ export default async function HistoryPage({
                             {WEEKDAY[session.weekday]} {session.scheduledDate}
                             {session.actualSec ? ` · ${Math.round(session.actualSec / 60)} min` : ''}
                           </Typography>
+                          {/* A note you cannot see from the list is a note you will never re-read. */}
+                          {session.notes && (
+                            <Typography variant="body2" color="text.secondary" noWrap sx={{ fontStyle: 'italic' }}>
+                              “{session.notes}”
+                            </Typography>
+                          )}
                         </Box>
                         {session.status === 'skipped'
                           ? <Chip size="small" label="Skipped" />

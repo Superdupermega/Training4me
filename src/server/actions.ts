@@ -222,6 +222,25 @@ export async function finishSession(sessionId: string, actualSec: number, notes?
   }
 }
 
+/**
+ * `t4m_session.notes` — and `finishSession`'s own optional third argument
+ * above — existed since the original schema; nothing ever wrote to it after
+ * the fact or read it back anywhere. This is that: editable from the
+ * finished-session view (`SessionSummary.tsx`), where there is a moment to
+ * write one, not mid-set where there is not. See docs/chunks/chunk-23-
+ * reward-loop.md §5.
+ */
+export async function saveSessionNotes(sessionId: string, notes: string): Promise<Result> {
+  try {
+    await requireUnlocked();
+    await repo.updateSession(sessionId, { notes: notes.trim() ? notes : null });
+    revalidateTag(TAGS.sessions);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function skipSession(sessionId: string): Promise<Result> {
   try {
     await requireUnlocked();
@@ -279,14 +298,24 @@ export async function logBodyweight(kg: number): Promise<Result> {
   }
 }
 
-export async function startNextBlock(): Promise<Result> {
+export async function startNextBlock(): Promise<Result<{ completedProgramId: string } | undefined>> {
   try {
     await requireUnlocked();
+    // Captured before `buildProgram()` below replaces it — this is the block
+    // that just finished, not the one about to exist.
+    const completed = await repo.getActiveProgram();
     const { rollOverTrainingMaxes } = await import('./nextBlock');
-    await rollOverTrainingMaxes();
+    const changes = await rollOverTrainingMaxes();
+    // Previously this was `await rollOverTrainingMaxes();` — the return
+    // value discarded outright, so the retrospective had nowhere to read
+    // what moved and why. See docs/chunks/chunk-23-reward-loop.md §1.
+    if (completed) {
+      await repo.saveTmChanges(completed.id, changes);
+      revalidateTag(TAGS.program);
+    }
     revalidateTag(TAGS.profile);
     await buildProgram();
-    return { ok: true };
+    return { ok: true, data: completed ? { completedProgramId: completed.id } : undefined };
   } catch (err) {
     return fail(err);
   }

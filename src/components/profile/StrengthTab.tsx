@@ -38,9 +38,7 @@ export function StrengthTab({ initialExerciseId, initialSeries, trainingMaxes }:
     if (result.ok) setSeries(result.data!);
   }
 
-  const first = series[0];
   const last = series[series.length - 1];
-  const delta = first && last ? Math.round((last.e1rm - first.e1rm) * 10) / 10 : null;
   const exercise = getExercise(exerciseId);
   const tm = trainingMaxes[exerciseId];
 
@@ -59,24 +57,20 @@ export function StrengthTab({ initialExerciseId, initialSeries, trainingMaxes }:
 
       <Card variant="outlined" sx={{ p: 2 }}>
         <Typography variant="h3">{exercise.name} — estimated 1RM</Typography>
-        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'baseline', mt: 0.5 }}>
-          {/*
-            The headline `docs/04-DESIGN-SYSTEM.md` §2 specified and this tab
-            never had — the chart below carried the number, but nothing on
-            the page said what it currently is without reading the last
-            point off the SVG.
-          */}
-          <Typography variant="displayMedium" className="tnum">
-            {last ? `${last.e1rm.toFixed(1)} kg` : '—'}
-          </Typography>
-          {delta != null && (
-            <Typography variant="body2" className="tnum" color={delta >= 0 ? 'success.main' : 'text.secondary'}>
-              {delta > 0 ? '+' : ''}{delta} kg over the shown range
-            </Typography>
-          )}
-        </Stack>
+        {/*
+          The headline `docs/04-DESIGN-SYSTEM.md` §2 specified and this tab
+          never had — the chart below carried the number, but nothing on the
+          page said what it currently is without reading the last point off
+          the SVG. The change-over-time figure now lives in `LineChart`
+          itself (its own delta headline, chunk 23 §3) rather than being
+          duplicated here too.
+        */}
+        <Typography variant="displayMedium" className="tnum" sx={{ mt: 0.5 }}>
+          {last ? `${last.e1rm.toFixed(1)} kg` : '—'}
+        </Typography>
         <Box sx={{ mt: 1.5, opacity: loading ? 0.5 : 1 }}>
           <LineChart
+            chartId={`e1rm-${exerciseId}`}
             points={series.map((p) => ({ label: p.date, value: p.e1rm, isPr: p.isPr }))}
             formatValue={(v) => v.toFixed(1)}
             unit=" kg"

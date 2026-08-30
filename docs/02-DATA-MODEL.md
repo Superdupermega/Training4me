@@ -76,6 +76,7 @@ one profile.
 | `input` | `jsonb` | the full frozen generator input — regenerating from `input` + `generator_version` must be byte-identical (there is a test) |
 | `routine_id` | `uuid` FK → `t4m_routine`, nullable | set when this program was materialized from a builder-authored routine (chunk 18) rather than the generator |
 | `created_at` | `timestamptz` | |
+| `tm_changes` | `jsonb` nullable | `{exerciseId, from, to, reason}[]` — written by `startNextBlock` at the moment `rollOverTrainingMaxes()` actually runs, onto the program that just finished. `null` until then; read back by `/program/complete` (chunk 23) |
 
 Partial unique index: only one `status = 'active'` row at a time
 (`t4m_one_active_program`).

@@ -857,3 +857,64 @@ standard `chunk-24-craft.md` §1's caveat asks for later.
 
 **Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
 unrelated to this chunk.
+
+## Chunk 23 — The reward loop — 2026-08-30
+**Landed:** All five items from `chunk-23-reward-loop.md`, findings #4–#8.
+Live Supabase access was available this session (unlike every prior chunk —
+see DECISIONS.md) and was used: `t4m_program` gained one migrated column,
+verified against the real schema afterwards.
+
+- **The block retrospective.** New pure `src/core/progression/retrospective.ts`
+  (`buildBlockRetrospective`), unit-tested directly (tonnage, adherence with
+  skipped sessions, an empty block, a block with no TM movement, peak-week
+  top-set selection, PR filtering by session). `startNextBlock` now captures
+  `rollOverTrainingMaxes()`'s return value instead of discarding it and
+  writes it onto the just-finished program row (`t4m_program.tm_changes`,
+  a new nullable `jsonb` column — migration applied and confirmed live).
+  New route `src/app/program/complete/page.tsx` reads a program by id and
+  assembles the retrospective from it — shape 2 from the brief's own two
+  options, chosen because it survives a reload. `NextBlockCard` on `/today`
+  now offers "See how it went" alongside "Start next block", and routes
+  there itself once the block roll-over actually happens.
+- **The PR moment.** New `PRMoment.tsx`, rendered above the set-by-set
+  summary in `SessionSummary.tsx`: `tertiaryContainer`-toned cards, the lift
+  and number at `displayLarge`, a count-up over ~600ms. Renders directly off
+  the live `prs` prop (no snapshot), so an edit that revokes a PR makes its
+  card disappear on the next render.
+- **Charts worth looking at.** `LineChart.tsx` gained an area-fill gradient,
+  first/middle/last x-axis labels, a signed delta headline ("+7.5 kg from
+  W1 to W12" — the highest-value, cheapest item, exactly as the brief said),
+  and CSS-only tap-to-inspect (an enlarged, keyboard-focusable hit circle
+  per point revealing a sibling tooltip group via `:hover`/`:focus` — no
+  client JS, still a genuine Server Component). `StrengthTab`/`BodyTab`'s
+  own hand-rolled delta text was removed now that the chart shows its own.
+- **The body map.** New `src/components/charts/BodyMap.tsx`: front and back
+  silhouettes, one `<path>` per `MuscleGroup` on each, keyed off a
+  `Record<MuscleGroup, string>` per side — exhaustive by construction, with
+  a direct test iterating the union. Reuses `Heatmap.tsx`'s own shading
+  thresholds. Shown on `VolumeTab` alongside the existing horizontal bar
+  ranking, not instead of it.
+- **Session notes.** New action `saveSessionNotes` (`requireUnlocked()`
+  first), a `Notes` field in `SessionSummary.tsx` saved on blur, the note
+  shown truncated on its `/history` row, and a `session_notes` CSV column
+  added to `exportLoggedSetsCsv` (repeated per row of that session — the
+  JSON export already carried the canonical one-per-session shape via its
+  full-table dump).
+
+**Deviated:** five items, all with full reasoning in `DECISIONS.md` dated
+2026-08-30 — the live-migration call, the retrospective's "not decided yet"
+pre-roll-over state, `LineChart`'s `chartId` prop instead of `useId()`
+(cannot be called in `BodyTab.tsx`'s genuine Server Component render),
+`BarChart` left unchanged (§3's "3.1 and 3.2" doesn't apply to it), and
+`BodyMap`'s badge treatment for groups with no natural region on one side.
+
+**Verified:** 369 tests (333 → +36: 9 for `retrospective.ts`, 14 for
+`BodyMap`, 6 for `LineChart`, 3 for `PRMoment`, 3 for `SessionSummary`'s
+notes flow, 1 for the CSV column list). `pnpm test && pnpm lint && pnpm
+typecheck && pnpm build && pnpm verify:actions` all clean. The `tm_changes`
+migration was applied to the live project and its presence confirmed with a
+direct `information_schema.columns` query, not just assumed from the
+migration succeeding.
+
+**Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
+unrelated to this chunk.

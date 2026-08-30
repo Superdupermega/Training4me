@@ -152,6 +152,10 @@ export const theme = createTheme({
           from: { strokeDashoffset: 1 },
           to: { strokeDashoffset: 0 },
         },
+        '@keyframes prArrive': {
+          from: { opacity: 0, transform: 'scale(0.96)' },
+          to: { opacity: 1, transform: 'scale(1)' },
+        },
       },
     },
     MuiButton: {

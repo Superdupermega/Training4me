@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { csvField } from './export';
+import { CSV_HEADER, csvField } from './export';
+
+describe('CSV export column list', () => {
+  // docs/02-DATA-MODEL.md's own warning: a field that silently misses an
+  // export is drift. `exportLoggedSetsCsv` itself needs a live `db()` this
+  // suite has no mocked Supabase to fake (consistent with the rest of
+  // `src/server`'s test coverage) — the header is the one part checkable
+  // without it, and it is exactly the list a missing column would hide in.
+  it('carries session_notes, per docs/chunks/chunk-23-reward-loop.md §5', () => {
+    expect(CSV_HEADER).toContain('session_notes');
+  });
+});
 
 describe('csvField', () => {
   it('leaves a plain value unquoted', () => {

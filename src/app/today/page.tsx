@@ -73,7 +73,7 @@ export default async function TodayPage() {
           />
 
           {allDone ? (
-            <NextBlockCard />
+            <NextBlockCard programId={program.id} />
           ) : featured && featuredStatus ? (
             <TodayCard session={featured} status={featuredStatus} />
           ) : null}

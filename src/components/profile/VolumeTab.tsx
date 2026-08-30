@@ -3,6 +3,7 @@ import Card from '@mui/material/Card';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { BarChart, HorizontalBarChart } from '@/components/charts/BarChart';
+import { BodyMap } from '@/components/charts/BodyMap';
 import type { MuscleGroupVolume, WeekBucket } from '@/server/analytics';
 
 interface Props {
@@ -52,6 +53,14 @@ export function VolumeTab({ weekly, byMuscleGroup }: Props) {
           A set is credited to all the muscle groups its exercise primarily works, split evenly —
           a squat counts toward both Quads and Hamstrings &amp; glutes.
         </Typography>
+      </Box>
+
+      <Box>
+        <Typography variant="overline" color="text.secondary">Shape, not just a ranking</Typography>
+        {/* The bars above carry the numbers; the map carries the shape — shown alongside, not instead of. */}
+        <Card variant="outlined" sx={{ mt: 1, p: 2 }}>
+          <BodyMap groups={byMuscleGroup.map((g) => ({ group: g.group, sets: g.sets }))} />
+        </Card>
       </Box>
     </Stack>
   );

@@ -20,24 +20,17 @@ interface Props {
  */
 export function BodyTab({ entries, today }: Props) {
   const last = entries[entries.length - 1] ?? null;
-  const first = entries[0];
-  const delta = first && last && first !== last ? Math.round((last.kg - first.kg) * 10) / 10 : null;
 
   return (
     <Stack spacing={2}>
       <BodyweightCard lastKg={last?.kg ?? null} lastDate={last?.date ?? null} today={today} />
 
       <Card variant="outlined" sx={{ p: 2 }}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <Typography variant="h3">Bodyweight</Typography>
-          {delta != null && (
-            <Typography variant="body2" className="tnum" color="text.secondary">
-              {delta > 0 ? '+' : ''}{delta} kg over this window
-            </Typography>
-          )}
-        </Stack>
+        <Typography variant="h3">Bodyweight</Typography>
+        {/* The change-over-time figure lives in `LineChart` itself now (its own delta headline, chunk 23 §3). */}
         <Box sx={{ mt: 1.5 }}>
           <LineChart
+            chartId="bodyweight"
             points={entries.map((e) => ({ label: e.date, value: e.kg }))}
             formatValue={(v) => v.toFixed(1)}
             unit=" kg"
