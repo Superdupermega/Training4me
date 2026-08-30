@@ -65,22 +65,35 @@ export function RestTimer({ endsAt, totalSec, onAdjust, onDismiss }: Props) {
       role="timer"
       aria-live="off"
     >
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', maxWidth: 680, mx: 'auto' }}>
-        <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+      <Stack spacing={1} sx={{ maxWidth: 680, mx: 'auto' }}>
+        <Stack direction="row" spacing={2} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
           <CircularProgress
-            variant="determinate" value={progress} size={56} thickness={4}
+            variant="determinate" value={progress} size={40} thickness={4}
             color={remaining === 0 ? 'success' : 'primary'}
           />
-          <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
-            <Typography variant="caption" className="tnum" sx={{ fontWeight: 700 }}>{label}</Typography>
-          </Box>
-        </Box>
-        <Typography sx={{ flex: 1 }} color="text.secondary">
-          {remaining === 0 ? 'Rest is up. Next set.' : 'Resting'}
-        </Typography>
-        <Button size="small" variant="outlined" onClick={() => onAdjust(-15)} aria-label="Fifteen seconds less">−15s</Button>
-        <Button size="small" variant="outlined" onClick={() => onAdjust(15)} aria-label="Fifteen seconds more">+15s</Button>
-        <Button size="small" onClick={onDismiss}>Skip</Button>
+          {/*
+            The countdown used to live as `variant="caption"` text packed
+            inside the ring — unreadable at arm's length, let alone across a
+            gym floor. `displayLarge` is the token docs/04-DESIGN-SYSTEM.md
+            §2 specified for exactly this ("must read from 1 m away"); the
+            ring stays as a slim at-a-glance progress indicator beside it
+            rather than trying to frame text that no longer fits inside it.
+          */}
+          <Typography
+            variant="displayLarge" className="tnum"
+            sx={{ fontSize: { xs: '2.25rem', sm: '3rem' } }}
+          >
+            {label}
+          </Typography>
+          <Typography sx={{ flex: 1 }} color="text.secondary">
+            {remaining === 0 ? 'Rest is up. Next set.' : 'Resting'}
+          </Typography>
+        </Stack>
+        <Stack direction="row" spacing={1} sx={{ justifyContent: 'flex-end' }}>
+          <Button size="small" variant="outlined" onClick={() => onAdjust(-15)} aria-label="Fifteen seconds less">−15s</Button>
+          <Button size="small" variant="outlined" onClick={() => onAdjust(15)} aria-label="Fifteen seconds more">+15s</Button>
+          <Button size="small" onClick={onDismiss}>Skip</Button>
+        </Stack>
       </Stack>
       {/*
         The visible timer is aria-live="off" on purpose — announcing every

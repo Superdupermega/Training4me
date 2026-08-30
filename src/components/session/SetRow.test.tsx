@@ -152,6 +152,50 @@ describe('SetRow', () => {
     expect(screen.queryByLabelText('Complete set 1')).not.toBeInTheDocument();
   });
 
+  it('does not throw when navigator.vibrate is undefined (iOS Safari has no implementation at all)', () => {
+    const original = navigator.vibrate;
+    // @ts-expect-error -- deleting a method jsdom does implement, to reproduce iOS Safari's absence of it
+    delete navigator.vibrate;
+    const onComplete = vi.fn();
+    render(
+      <SetRow
+        set={set({ weightKg: undefined })} logged={undefined} increment={2.5} expanded
+        onExpand={() => {}} onComplete={onComplete}
+      />,
+    );
+    expect(() => fireEvent.click(screen.getByRole('button', { name: 'Log set' }))).not.toThrow();
+    expect(onComplete).toHaveBeenCalled();
+    navigator.vibrate = original;
+  });
+
+  it('renders the tick unanimated for a set already logged when the row mounts (no reload replay)', () => {
+    render(
+      <SetRow
+        set={set()} logged={{ reps: 5, weightKg: 100, rpe: 8 }} increment={2.5}
+        expanded={false} onExpand={() => {}} onComplete={() => {}}
+      />,
+    );
+    const check = document.querySelector('svg[aria-hidden] path');
+    expect(check).toHaveAttribute('style', expect.stringContaining('animation: none'));
+  });
+
+  it('animates the tick and flashes the row on a set that transitions to logged during this mount', () => {
+    const { rerender } = render(
+      <SetRow
+        set={set()} logged={undefined} increment={2.5} expanded
+        onExpand={() => {}} onComplete={() => {}}
+      />,
+    );
+    rerender(
+      <SetRow
+        set={set()} logged={{ reps: 5, weightKg: 100, rpe: 8 }} increment={2.5} expanded={false}
+        onExpand={() => {}} onComplete={() => {}}
+      />,
+    );
+    const check = document.querySelector('svg[aria-hidden] path');
+    expect(check).toHaveAttribute('style', expect.stringContaining('forwards'));
+  });
+
   it('shows plate math for a barbell exercise loaded above the bar, and not for a non-barbell one', () => {
     const { rerender } = render(
       <SetRow

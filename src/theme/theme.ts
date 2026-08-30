@@ -1,6 +1,7 @@
 'use client';
 import { createTheme } from '@mui/material/styles';
 import type { PaletteColor, PaletteColorOptions } from '@mui/material/styles';
+import type { CSSProperties } from 'react';
 
 // M3 has role pairs MUI's default palette does not: a "container" tone next
 // to every accent colour (a tinted surface to put that colour's content on),
@@ -30,6 +31,35 @@ declare module '@mui/material/styles' {
     surfaceContainerLow?: PaletteColorOptions;
     surfaceContainer?: PaletteColorOptions;
     surfaceContainerHigh?: PaletteColorOptions;
+  }
+}
+
+// Three display sizes M3 also has and MUI's default `h1`-capped scale does
+// not: numbers meant to be read from across a room, not a paragraph heading.
+// `docs/04-DESIGN-SYSTEM.md` §2 specified `displaySmall` for the current
+// weight ("must read from 1 m away") and it was never built — `h1` topped
+// out at 1.75rem, smaller than the body copy of a phone OS's own clock.
+// Same augmentation pattern as the palette extension above: both the
+// `TypographyVariants` / `TypographyVariantsOptions` pair (so `theme.ts` and
+// callers typecheck) and `TypographyPropsVariantOverrides` (so
+// `<Typography variant="displayLarge">` typechecks).
+declare module '@mui/material/styles' {
+  interface TypographyVariants {
+    displayLarge: CSSProperties;
+    displayMedium: CSSProperties;
+    displaySmall: CSSProperties;
+  }
+  interface TypographyVariantsOptions {
+    displayLarge?: CSSProperties;
+    displayMedium?: CSSProperties;
+    displaySmall?: CSSProperties;
+  }
+}
+declare module '@mui/material/Typography' {
+  interface TypographyPropsVariantOverrides {
+    displayLarge: true;
+    displayMedium: true;
+    displaySmall: true;
   }
 }
 
@@ -89,6 +119,12 @@ export const theme = createTheme({
     h1: { fontSize: '1.75rem', fontWeight: 600, letterSpacing: '-0.01em' },
     h2: { fontSize: '1.375rem', fontWeight: 600 },
     h3: { fontSize: '1.125rem', fontWeight: 600 },
+    // The numbers you read mid-set, from arm's length or further: the rest
+    // countdown, the weight you are about to load, the running clock, an
+    // e1RM headline. See the file-level comment above.
+    displayLarge: { fontSize: '3rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.05 },
+    displayMedium: { fontSize: '2.25rem', fontWeight: 700, letterSpacing: '-0.02em', lineHeight: 1.1 },
+    displaySmall: { fontSize: '1.75rem', fontWeight: 700, letterSpacing: '-0.01em', lineHeight: 1.15 },
     button: { textTransform: 'none', fontWeight: 600, letterSpacing: 0 },
     overline: { textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700, fontSize: '0.7rem' },
   },
@@ -98,6 +134,24 @@ export const theme = createTheme({
         // Numbers change constantly in the player; stop them jittering.
         '.tnum': { fontVariantNumeric: 'tabular-nums' },
         body: { overscrollBehaviorY: 'none' },
+        // Named globally, the same way `.tnum` is, rather than generated
+        // per-component with `@emotion/react`'s `keyframes()` — that helper
+        // only registers its `@keyframes` rule when the result is threaded
+        // through emotion's own `css`/`styled` serializer; interpolated into
+        // a plain inline `style` object (`SetRow`'s drawn check) it produces
+        // nothing but an unregistered animation name that never animates. A
+        // literal name declared once here and referenced as a plain string
+        // has no such trap. Flattened automatically under
+        // `prefers-reduced-motion` by `Providers.tsx`'s global override — no
+        // second guard needed at either call site (rule 5).
+        '@keyframes flashRow': {
+          from: { backgroundColor: 'var(--mui-palette-primaryContainer-main)' },
+          to: { backgroundColor: 'var(--mui-palette-action-hover)' },
+        },
+        '@keyframes drawCheck': {
+          from: { strokeDashoffset: 1 },
+          to: { strokeDashoffset: 0 },
+        },
       },
     },
     MuiButton: {

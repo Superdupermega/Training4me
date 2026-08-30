@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionRow } from '@/server/repo';
 import { SessionPlayer } from './SessionPlayer';
+import { enqueue } from './outbox';
 
 const push = vi.fn();
 const refresh = vi.fn();
@@ -197,5 +198,154 @@ describe('SessionPlayer finish flow', () => {
 
     expect(await screen.findByText(/Session not found/)).toBeInTheDocument();
     expect(refresh).not.toHaveBeenCalled();
+  });
+});
+
+describe('SessionPlayer focus mode (docs/chunks/chunk-22-player-feel.md §2)', () => {
+  beforeEach(() => {
+    push.mockClear();
+    refresh.mockClear();
+    beginSession.mockReset();
+    finishSession.mockReset();
+    logSets.mockReset();
+    applyAutoregulation.mockClear();
+    vi.mocked(enqueue).mockClear();
+  });
+
+  // Two movements in one block: A1 (two sets) then A2 (one set) — enough to
+  // prove the cursor advances *between* exercises, not just between sets of
+  // the same one.
+  function twoMovementBlocks() {
+    return [{
+      letter: 'A', kind: 'main', name: 'Main lift', estimatedSec: 600,
+      exercises: [
+        {
+          slot: 'A1', exerciseId: 'back-squat', tempo: '20X1', cue: 'Brace and drive.',
+          sets: [
+            { setNumber: 1, kind: 'working', reps: 5, weightKg: 100, restSec: 0, estimatedSec: 30 },
+            { setNumber: 2, kind: 'working', reps: 5, weightKg: 100, restSec: 0, estimatedSec: 30 },
+          ],
+        },
+        {
+          slot: 'A2', exerciseId: 'bench-press', tempo: '20X1', cue: 'Elbows tucked.',
+          sets: [
+            { setNumber: 1, kind: 'working', reps: 5, weightKg: 60, restSec: 0, estimatedSec: 30 },
+          ],
+        },
+      ],
+    }] as SessionRow['blocks'];
+  }
+
+  it('is the default view of an in-progress session and shows only the current movement', () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoMovementBlocks() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    expect(screen.getByText('Back Squat')).toBeInTheDocument();
+    expect(screen.queryByText('Bench Press')).not.toBeInTheDocument();
+    expect(screen.getByText('Movement 1 of 2')).toBeInTheDocument();
+  });
+
+  it('does not advance the cursor while a set of the current movement is still unlogged', async () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoMovementBlocks() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Set 1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+
+    // Set 2 of Back Squat is still unlogged — the cursor must still be on it.
+    await waitFor(() => expect(screen.getByLabelText('Complete set 2')).toBeInTheDocument());
+    expect(screen.getByText('Back Squat')).toBeInTheDocument();
+    expect(screen.getByText('Movement 1 of 2')).toBeInTheDocument();
+  });
+
+  it('advances the cursor to the next movement once every non-ramp set of this one is logged', async () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoMovementBlocks() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Set 1'));
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+    fireEvent.click(await screen.findByLabelText('Complete set 2'));
+
+    expect(await screen.findByText('Bench Press')).toBeInTheDocument();
+    expect(screen.queryByText('Back Squat')).not.toBeInTheDocument();
+    expect(screen.getByText('Movement 2 of 2')).toBeInTheDocument();
+  });
+
+  it('seeds the cursor from what is already logged, resuming mid-session rather than at block A', () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoMovementBlocks() })}
+        increment={2.5}
+        initialLogged={{
+          'A:A1:1': { reps: 5, weightKg: 100, rpe: 8 },
+          'A:A1:2': { reps: 5, weightKg: 100, rpe: 8 },
+        }}
+      />,
+    );
+
+    expect(screen.getByText('Bench Press')).toBeInTheDocument();
+    expect(screen.queryByText('Back Squat')).not.toBeInTheDocument();
+  });
+
+  it('routes a set logged after navigating back to a previous movement through the same onComplete', async () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoMovementBlocks() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByText('Set 1'));
+    fireEvent.change(screen.getByLabelText('Weight (kg)'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+
+    // Set 2 carries the 100 kg over automatically; completing it finishes
+    // this movement and the cursor advances to Bench Press on its own.
+    fireEvent.click(await screen.findByLabelText('Complete set 2'));
+    await screen.findByText('Bench Press');
+
+    fireEvent.click(screen.getByLabelText('Previous movement'));
+    await screen.findByText('Back Squat');
+
+    // Re-open and correct the already-logged set 1 from here.
+    fireEvent.click(screen.getByText('Set 1'));
+    fireEvent.change(screen.getByLabelText('Weight (kg)'), { target: { value: '105' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Log set' }));
+
+    // `complete()` — the same one function both views call — always queues
+    // through `enqueue` first with a `LoggedSetRow` of this exact shape,
+    // whichever view drove the edit. Asserting on it is asserting `complete`
+    // itself was reached with the right row, not a view-specific side path.
+    await waitFor(() => expect(enqueue).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sessionId: 's1', blockLetter: 'A', slot: 'A1', exerciseId: 'back-squat', setNumber: 1, weightKg: 105,
+      }),
+    ));
+  });
+
+  it('still renders every block in the list view, unchanged', async () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: twoMovementBlocks() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+
+    expect(await screen.findByText('Back Squat')).toBeInTheDocument();
+    expect(screen.getByText('Bench Press')).toBeInTheDocument();
   });
 });

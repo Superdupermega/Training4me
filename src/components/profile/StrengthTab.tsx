@@ -58,11 +58,20 @@ export function StrengthTab({ initialExerciseId, initialSeries, trainingMaxes }:
       </Box>
 
       <Card variant="outlined" sx={{ p: 2 }}>
-        <Stack direction="row" sx={{ justifyContent: 'space-between', alignItems: 'baseline' }}>
-          <Typography variant="h3">{exercise.name} — estimated 1RM</Typography>
+        <Typography variant="h3">{exercise.name} — estimated 1RM</Typography>
+        <Stack direction="row" spacing={1.5} sx={{ alignItems: 'baseline', mt: 0.5 }}>
+          {/*
+            The headline `docs/04-DESIGN-SYSTEM.md` §2 specified and this tab
+            never had — the chart below carried the number, but nothing on
+            the page said what it currently is without reading the last
+            point off the SVG.
+          */}
+          <Typography variant="displayMedium" className="tnum">
+            {last ? `${last.e1rm.toFixed(1)} kg` : '—'}
+          </Typography>
           {delta != null && (
             <Typography variant="body2" className="tnum" color={delta >= 0 ? 'success.main' : 'text.secondary'}>
-              {delta > 0 ? '+' : ''}{delta} kg
+              {delta > 0 ? '+' : ''}{delta} kg over the shown range
             </Typography>
           )}
         </Stack>

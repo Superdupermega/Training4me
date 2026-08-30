@@ -769,3 +769,91 @@ belongs to a different app sharing this Supabase project, not Training4me.
 
 **Blocked:** #24 only, now — `VAPID_PRIVATE_KEY` and `CRON_SECRET` in
 Vercel.
+
+## Chunk 22 — The player, felt — 2026-08-30
+**Landed:** All three items from `chunk-22-player-feel.md`, findings #1–#3.
+
+- **A display type scale.** `displayLarge`/`displayMedium`/`displaySmall`
+  added to `theme.ts` `typography`, with the same `TypographyVariants` /
+  `TypographyVariantsOptions` / `TypographyPropsVariantOverrides` module
+  augmentation the palette extension already used as its pattern. Applied at
+  all five sites the brief named: the rest countdown (`RestTimer.tsx`, which
+  also moved the digits out of the `CircularProgress` ring itself — they no
+  longer fit inside it at this size), the weight stepper (`SetRow.tsx`,
+  via `theme.typography.displaySmall` spread into the bare `<input>`'s `sx`,
+  since it can't take a `variant` prop), the session clock (`SessionPlayer`
+  `TopBar` action, `lineHeight: 1` pinned so it doesn't grow the sticky bar),
+  a new focus-mode hero (`FocusView.tsx`), and the e1RM headline
+  `StrengthTab.tsx` never had (added one).
+- **Focus mode.** New `SessionPlayer` `view: 'focus' | 'list'` state plus a
+  `cursor: { blockLetter, slot }`. The existing accordion was extracted
+  verbatim into `ListView.tsx` (behaviourally unchanged) so it could become
+  `next/dynamic({ ssr: false })`, the same way `ReadinessDialog` and
+  `RestTimer` already are — it's never the first paint once focus mode is
+  the default. New `FocusView.tsx` renders one movement at a time, reusing
+  `SetRow` verbatim (not forked). Cursor seeds from what's already logged
+  on mount (first movement with something left, walked in session order),
+  and advances forward exactly once per completed movement — see
+  **Deviated** below for why that turned out to need more than "watch
+  `logged` and check if the current movement is done".
+- **Set-completion feedback**, all in `SetRow.tsx`: `navigator.vibrate?.(15)`
+  on submit (optional-chained — iOS Safari has no implementation at all);
+  a row flash and a self-drawing SVG check (`stroke-dasharray`/
+  `-dashoffset` with `pathLength={1}`), both gated on "did this row
+  transition to logged during this mount" via a `wasDone` ref, not on
+  `Boolean(logged)` — a reload mid-session renders already-logged rows
+  finished, not replaying; and a `LinearProgress` under `TopBar` in
+  `SessionPlayer` driven by the same `totals` the "x/y sets" chip already
+  reads.
+
+**Deviated:**
+- The two keyframes (`flashRow`, `drawCheck`) are declared **globally** in
+  `theme.ts`'s `MuiCssBaseline.styleOverrides`, next to `.tnum`, and
+  referenced by plain string name — not generated per-component with
+  `@emotion/react`'s `keyframes()`, which was the first thing tried. That
+  helper only registers its `@keyframes` rule when its result is threaded
+  through emotion's own `css`/`styled` serializer; interpolated into a
+  plain inline `style` object (the SVG check's `style` prop is a real React
+  inline style, not an `sx`) it silently produces an unregistered animation
+  name that never animates anything. Caught before it shipped, not after —
+  worth recording so nobody reaches for `keyframes()` here again.
+- Advancing the cursor is **not** "whenever the cursor's current movement is
+  fully logged" — that was the first implementation, and it broke the
+  brief's own worked example: going back to fix set 2 landed back on it,
+  then submitting the fix immediately re-advanced the cursor forward again,
+  because the movement was (again) fully done. Fixed by tracking the
+  not-done → done *transition* explicitly (a `pendingAdvance` ref set only
+  inside `complete()`, consumed once by an effect, and left alone by any
+  render where the cursor merely happens to sit on an already-done
+  movement). `docs/chunks/chunk-22-player-feel.md` §2's test list doesn't
+  name this case explicitly but the acceptance box ("must be able to go
+  back and fix set 2") requires it; a test for it is included.
+- `/session/[id]`'s first-load JS is reported, not fixed, per the budget
+  rule. Baseline before this chunk (measured by stashing all changes and
+  rebuilding): **229 kB**, already 59 kB over the 170 kB figure in
+  `chunk-21-polish.md` §4 — `/exercises` (216 kB vs. 160 kB) and
+  `/program/builder` (196 kB vs. 190 kB) are over the same way, so this
+  route was not newly broken by chunk 22. After this chunk: **232 kB** — a
+  net +3 kB despite adding a second full view, largely offset by
+  `ListView` moving out to its own dynamic chunk. The real weight is
+  unchanged from #22's prior partial note: the exercise library imported
+  into client components. Not this chunk's scope to restructure.
+
+**Verified:** 333 tests (324 → +9: six new `SessionPlayer` focus-mode
+cases — default view, does-not-advance, advances, seeds-from-logged,
+back-then-edit routes through the same `onComplete`/`enqueue`, list view
+still renders every block — and three new `SetRow` cases — vibrate-missing
+doesn't throw, tick unanimated on mount-already-logged, tick animated on a
+fresh transition). `pnpm test && pnpm lint && pnpm typecheck && pnpm build
+&& pnpm verify:actions` all clean.
+
+**Not verified:** a real keyboard-only pass and a real phone. Every new
+interactive element is a native `<button>`/`<input>` with an `aria-label`
+(`Previous movement`, `Next movement`, `List`, `Focus view`, the existing
+per-set labels `SetRow` already carries), so keyboard reachability follows
+from the DOM structure, but nobody actually tabbed through a session on a
+device in this environment — recorded rather than claimed, per the same
+standard `chunk-24-craft.md` §1's caveat asks for later.
+
+**Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
+unrelated to this chunk.

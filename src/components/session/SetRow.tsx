@@ -11,7 +11,7 @@ import TextField from '@mui/material/TextField';
 import ToggleButton from '@mui/material/ToggleButton';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import Typography from '@mui/material/Typography';
-import { useEffect, useState, type ChangeEvent, type FocusEvent } from 'react';
+import { useEffect, useRef, useState, type ChangeEvent, type FocusEvent } from 'react';
 import { formatWeight } from '@/components/format';
 import { formatPlateBreakdown, plateBreakdown, STANDARD_BAR_KG, availablePlatesKg } from '@/core/plates';
 import { PAIN_AREAS, type PainArea, type PrescribedSet } from '@/core/types';
@@ -71,6 +71,32 @@ const PAIN_LABEL: Record<PainArea, string> = {
   elbow: 'Elbow', hip: 'Hip', wrist: 'Wrist',
 };
 
+/**
+ * The tick that draws itself in ~250ms on the row that *just* transitioned
+ * to logged — `animate` is false for a row that was already logged when the
+ * component mounted (a reload mid-session), which renders finished instead
+ * of replaying.
+ */
+function DrawnCheck({ animate }: { animate: boolean }) {
+  return (
+    <Box
+      component="svg" viewBox="0 0 24 24" width={20} height={20} aria-hidden
+      sx={{ color: 'primary.main', display: 'block' }}
+    >
+      <path
+        d="M4.5 12.5l4.5 4.5L19.5 6.5" fill="none" stroke="currentColor"
+        strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round"
+        pathLength={1}
+        style={{
+          strokeDasharray: 1,
+          strokeDashoffset: animate ? 1 : 0,
+          animation: animate ? 'drawCheck 250ms ease forwards' : 'none',
+        }}
+      />
+    </Box>
+  );
+}
+
 export function SetRow({
   set, logged, increment, expanded, onExpand, onComplete, barbell = false, microPlates = false,
   loadable = true, suggestedWeightKg = null, carriedWeightKg = null,
@@ -89,6 +115,18 @@ export function SetRow({
   const [askedForWeight, setAskedForWeight] = useState(false);
 
   const done = Boolean(logged);
+  // Whether this row transitioned to logged *during this mount* — gated on
+  // that, not on `Boolean(logged)` directly, so a reload mid-session (rows
+  // arriving already logged via `initialLogged`) renders them finished
+  // rather than replaying the flash and the tick draw on all of them at
+  // once. `wasDone` seeds from the very first render and is never reset, so
+  // it only ever answers "was this already true when I first saw it".
+  const wasDone = useRef(done);
+  const [justCompleted, setJustCompleted] = useState(false);
+  useEffect(() => {
+    if (!wasDone.current && done) setJustCompleted(true);
+    wasDone.current = done;
+  }, [done]);
   // The number to offer, never to assume: the plan's own prescription first
   // (an 82%-of-training-max main set), else last time / the training-max
   // projection for this movement.
@@ -122,6 +160,11 @@ export function SetRow({
 
   const submit = () => {
     setAskedForWeight(false);
+    // A single short pulse — deliberately distinguishable from the rest
+    // timer's `[120, 60, 120]` "your rest is over" pattern. Optional
+    // chaining is required: iOS Safari has no `navigator.vibrate` at all,
+    // and calling a missing method throws rather than no-oping.
+    navigator.vibrate?.(15);
     onComplete({
       reps: set.distanceM || set.durationSec ? undefined : reps,
       // A decided 0 is "bodyweight, no external load" — a real answer, and
@@ -157,6 +200,13 @@ export function SetRow({
         borderTop: 1, borderColor: 'divider',
         bgcolor: done ? 'action.hover' : undefined,
         opacity: isRamp && !done ? 0.75 : 1,
+        // A CSS animation on an sx trigger, not a `setTimeout` that flips
+        // state back after ~400ms — a timer racing the next set's own
+        // re-render is exactly the kind of thing that fights React here.
+        // `flashRow` is declared globally in `theme.ts`'s `MuiCssBaseline`
+        // override, next to `drawCheck` used below — see the comment there
+        // for why a literal name, not `@emotion/react`'s `keyframes()`.
+        ...(justCompleted && { animation: 'flashRow 400ms ease' }),
       }}
     >
       {/*
@@ -191,7 +241,7 @@ export function SetRow({
               ].filter(Boolean).join(' × ')}
               {logged?.rpe ? ` @${logged.rpe}` : ''}
             </Typography>
-            <CheckIcon color="primary" fontSize="small" />
+            <DrawnCheck animate={justCompleted} />
           </Stack>
         ) : (
           // An unlogged set used to render a filled grey circle around a
@@ -399,13 +449,19 @@ function Stepper({
           }}
           onBlur={(e: FocusEvent<HTMLInputElement>) => commit(e.target.value)}
           className="tnum"
-          sx={{
-            flex: 1, minWidth: 0, textAlign: 'center', fontSize: '1.4rem', fontWeight: 700,
+          sx={(t) => ({
+            // `theme.typography.displaySmall` rather than the old hardcoded
+            // `fontSize: '1.4rem'` — docs/04-DESIGN-SYSTEM.md §2's "must
+            // read from 1 m away" size, applied directly since this is a
+            // bare `<input>`, not a `Typography`, so it can't take the
+            // `variant` prop.
+            ...t.typography.displaySmall,
+            flex: 1, minWidth: 0, textAlign: 'center',
             fontFamily: 'inherit', color: 'inherit', border: 'none', outline: 'none',
             background: 'transparent', p: 0,
             '&::-webkit-outer-spin-button, &::-webkit-inner-spin-button': { WebkitAppearance: 'none', m: 0 },
             '&::placeholder': { color: 'text.disabled', fontWeight: 400 },
-          }}
+          })}
         />
         <Button
           variant="outlined" sx={{ minWidth: 48, px: 0 }} aria-label={`Increase ${label}`}
