@@ -10,6 +10,7 @@ import Dialog from '@mui/material/Dialog';
 import DialogActions from '@mui/material/DialogActions';
 import DialogContent from '@mui/material/DialogContent';
 import DialogTitle from '@mui/material/DialogTitle';
+import AddIcon from '@mui/icons-material/Add';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Paper from '@mui/material/Paper';
 import Snackbar from '@mui/material/Snackbar';
@@ -22,7 +23,7 @@ import { TopBar } from '@/components/nav/TopBar';
 import { ExerciseContextLine } from '@/components/exercises/ExerciseContext';
 import { getExercise } from '@/core/library/exercises';
 import type { Readiness, SessionBlock } from '@/core/types';
-import { beginSession, finishSession, logSets } from '@/server/actions';
+import { addSet, beginSession, finishSession, logSets } from '@/server/actions';
 import type { ExerciseContext } from '@/server/exerciseContext';
 import type { LoggedSetRow, SessionRow } from '@/server/repo';
 import { ReadinessDialog } from './ReadinessDialog';
@@ -53,6 +54,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
   const [queued, setQueued] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [addingSet, setAddingSet] = useState<string | null>(null);
   const [askReadiness, setAskReadiness] = useState(session.status === 'planned');
   const [startedAt] = useState(() => (session.startedAt ? new Date(session.startedAt).getTime() : Date.now()));
   const [now, setNow] = useState(startedAt);
@@ -118,6 +120,17 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
     [flush, session.id],
   );
 
+  // "I did one more of this than the plan said" — clones the last set of
+  // that exercise onto the end, and persists it so a refresh mid-session
+  // does not lose it (src/server/actions.ts:addSet).
+  const handleAddSet = useCallback(async (blockLetter: string, slot: string) => {
+    const id = key(blockLetter, slot, 0);
+    setAddingSet(id);
+    const result = await addSet(session.id, blockLetter, slot);
+    if (result.ok && result.data) setBlocks(result.data);
+    setAddingSet(null);
+  }, [session.id]);
+
   const totals = useMemo(() => {
     const all = blocks.flatMap((b) => b.exercises.flatMap((e) =>
       e.sets.filter((s) => s.kind !== 'ramp').map((s) => key(b.letter, e.slot, s.setNumber))));
@@ -127,7 +140,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
   const elapsed = Math.max(0, Math.round((now - startedAt) / 1000));
 
   return (
-    <Box sx={{ minHeight: '100dvh', pb: rest ? 16 : 12 }}>
+    <Box sx={{ minHeight: '100dvh', pb: rest ? 22 : 12 }}>
       <ReadinessDialog
         open={askReadiness}
         onSkip={() => { setAskReadiness(false); beginSession(session.id, null); }}
@@ -218,6 +231,14 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
                         />
                       );
                     })}
+                    <Button
+                      size="small" variant="text" startIcon={<AddIcon fontSize="small" />}
+                      loading={addingSet === key(block.letter, be.slot, 0)}
+                      onClick={() => handleAddSet(block.letter, be.slot)}
+                      sx={{ ml: 1, mt: 1, borderRadius: 999, color: 'text.secondary' }}
+                    >
+                      Add set
+                    </Button>
                   </Box>
                 );
               })}
@@ -227,11 +248,17 @@ export function SessionPlayer({ session, increment, initialLogged, contexts }: P
       })}
       </Box>
 
+      {/*
+        Always docked at the very bottom, regardless of whether rest is
+        running — the rest timer floats above it as its own card (RestTimer)
+        instead of shoving this bar around, so "Finish session" never moves
+        under your thumb mid-workout.
+      */}
       <Paper
         elevation={0}
         sx={{
-          position: 'fixed', left: 0, right: 0, bottom: rest ? 96 : 0, zIndex: 15,
-          p: 2, pb: rest ? 2 : 'calc(16px + env(safe-area-inset-bottom))',
+          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 15,
+          p: 2, pb: 'calc(16px + env(safe-area-inset-bottom))',
           borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper',
         }}
       >

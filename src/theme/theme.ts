@@ -99,7 +99,45 @@ export const theme = createTheme({
         sizeLarge: { minHeight: 56, fontSize: '1rem' },
       },
     },
-    MuiCard: { defaultProps: { elevation: 0 }, styleOverrides: { root: { borderRadius: 16 } } },
+    // A flat border alone reads as a placeholder, not a surface — every
+    // card and accordion gets a soft lift on top of its border/divider so
+    // "menus" (the session blocks, the today card, the history list, …)
+    // look like raised material instead of an outline someone forgot to
+    // fill in. Kept deliberately subtle: this is still the calm M3 system,
+    // not a return to heavy drop shadows.
+    MuiPaper: {
+      styleOverrides: {
+        outlined: (props) => ({
+          boxShadow: '0 1px 2px rgba(19,26,21,0.04), 0 3px 10px -6px rgba(19,26,21,0.10)',
+          ...props.theme.applyStyles('dark', {
+            boxShadow: '0 1px 2px rgba(0,0,0,0.3), 0 4px 16px -8px rgba(0,0,0,0.45)',
+          }),
+        }),
+      },
+    },
+    MuiCard: {
+      defaultProps: { elevation: 0 },
+      styleOverrides: {
+        root: (props) => ({
+          borderRadius: 16,
+          boxShadow: '0 1px 2px rgba(19,26,21,0.05), 0 4px 14px -6px rgba(19,26,21,0.12)',
+          ...props.theme.applyStyles('dark', {
+            boxShadow: '0 1px 2px rgba(0,0,0,0.35), 0 6px 20px -8px rgba(0,0,0,0.5)',
+          }),
+        }),
+      },
+    },
+    MuiAccordion: {
+      styleOverrides: {
+        root: (props) => ({
+          boxShadow: '0 1px 2px rgba(19,26,21,0.04), 0 3px 10px -6px rgba(19,26,21,0.10)',
+          ...props.theme.applyStyles('dark', {
+            boxShadow: '0 1px 2px rgba(0,0,0,0.3), 0 4px 16px -8px rgba(0,0,0,0.45)',
+          }),
+          '&::before': { display: 'none' },
+        }),
+      },
+    },
     MuiChip: { styleOverrides: { root: { fontWeight: 600 } } },
     MuiToggleButton: {
       styleOverrides: { root: { textTransform: 'none', minHeight: 44, borderRadius: 999 } },

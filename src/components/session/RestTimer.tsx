@@ -1,7 +1,8 @@
 'use client';
+import CloseIcon from '@mui/icons-material/Close';
 import Box from '@mui/material/Box';
-import Button from '@mui/material/Button';
 import CircularProgress from '@mui/material/CircularProgress';
+import IconButton from '@mui/material/IconButton';
 import Paper from '@mui/material/Paper';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
@@ -44,29 +45,49 @@ export function RestTimer({ endsAt, totalSec, onAdjust, onDismiss }: Props) {
     <Paper
       elevation={0}
       sx={{
-        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 20,
-        borderTop: 1, borderColor: 'divider', p: 2,
-        pb: 'calc(16px + env(safe-area-inset-bottom))', bgcolor: 'background.paper',
+        // A floating card, not a full-width dock: it sits well clear of the
+        // Finish button below it and leaves the sides of the screen free to
+        // tap or scroll through, rather than gating the whole bottom edge
+        // the way a full-bleed bar does.
+        position: 'fixed', left: '50%', transform: 'translateX(-50%)',
+        bottom: 'calc(96px + env(safe-area-inset-bottom))', zIndex: 20,
+        width: 'calc(100% - 32px)', maxWidth: 440,
+        borderRadius: 5, p: 1.5, bgcolor: 'background.paper',
+        boxShadow: '0 12px 28px -8px rgba(0,0,0,0.28), 0 2px 8px rgba(0,0,0,0.12)',
       }}
       role="timer"
       aria-live="off"
     >
-      <Stack direction="row" spacing={2} sx={{ alignItems: 'center', maxWidth: 680, mx: 'auto' }}>
-        <Box sx={{ position: 'relative', display: 'inline-flex' }}>
+      <Stack direction="row" spacing={1.5} sx={{ alignItems: 'center' }}>
+        <Box sx={{ position: 'relative', display: 'inline-flex', flexShrink: 0 }}>
           <CircularProgress
-            variant="determinate" value={progress} size={56} thickness={4}
+            variant="determinate" value={progress} size={48} thickness={4}
             color={remaining === 0 ? 'success' : 'primary'}
           />
           <Box sx={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center' }}>
-            <Typography variant="caption" className="tnum" sx={{ fontWeight: 700 }}>{label}</Typography>
+            <Typography variant="caption" className="tnum" sx={{ fontWeight: 700, fontSize: '0.75rem' }}>{label}</Typography>
           </Box>
         </Box>
-        <Typography sx={{ flex: 1 }} color="text.secondary">
+        <Typography variant="body2" sx={{ flex: 1, minWidth: 0 }} color="text.secondary" noWrap>
           {remaining === 0 ? 'Rest is up. Next set.' : 'Resting'}
         </Typography>
-        <Button size="small" variant="outlined" onClick={() => onAdjust(-15)} aria-label="Fifteen seconds less">−15s</Button>
-        <Button size="small" variant="outlined" onClick={() => onAdjust(15)} aria-label="Fifteen seconds more">+15s</Button>
-        <Button size="small" onClick={onDismiss}>Skip</Button>
+        <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+          <IconButton
+            size="small" onClick={() => onAdjust(-15)} aria-label="Fifteen seconds less"
+            sx={{ border: 1, borderColor: 'divider', borderRadius: 2, width: 40, height: 32, px: 0.5 }}
+          >
+            <Typography variant="caption" className="tnum" sx={{ fontWeight: 700, fontSize: '0.7rem' }}>−15</Typography>
+          </IconButton>
+          <IconButton
+            size="small" onClick={() => onAdjust(15)} aria-label="Fifteen seconds more"
+            sx={{ border: 1, borderColor: 'divider', borderRadius: 2, width: 40, height: 32, px: 0.5 }}
+          >
+            <Typography variant="caption" className="tnum" sx={{ fontWeight: 700, fontSize: '0.7rem' }}>+15</Typography>
+          </IconButton>
+          <IconButton size="small" onClick={onDismiss} aria-label="Skip rest" sx={{ bgcolor: 'action.selected', width: 32, height: 32 }}>
+            <CloseIcon fontSize="small" />
+          </IconButton>
+        </Stack>
       </Stack>
       {/*
         The visible timer is aria-live="off" on purpose — announcing every

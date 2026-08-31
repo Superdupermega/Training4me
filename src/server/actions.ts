@@ -7,7 +7,9 @@ import { generateProgram } from '@/core/generator/generateProgram';
 import { PROFILE_EQUIPMENT } from '@/core/library/equipment';
 import { detectPRs } from '@/core/progression/prs';
 import { applyReadiness } from '@/core/progression/readiness';
-import type { Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness } from '@/core/types';
+import type {
+  Equipment, EquipmentProfile, Experience, GeneratorInput, PainArea, Readiness, SessionBlock,
+} from '@/core/types';
 import * as analytics from './analytics';
 import { exerciseContext, type ExerciseContext } from './exerciseContext';
 import { COOKIE_MAX_AGE, COOKIE_NAME, deriveToken, safeEqual } from './lock';
@@ -153,6 +155,44 @@ export async function logSets(sets: repo.LoggedSetRow[]): Promise<Result> {
       revalidateTag(TAGS.profile);
     }
     return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * "One more set of the same movement" — cloned from the last set on that
+ * exercise (same weight/reps/tempo/rest), appended with the next set
+ * number. Persisted into `session.blocks` itself, not just the client's
+ * copy, so it survives a refresh mid-session the same way every other
+ * prescribed set does.
+ */
+export async function addSet(sessionId: string, blockLetter: string, slot: string): Promise<Result<SessionBlock[]>> {
+  try {
+    const session = await repo.getSession(sessionId);
+    if (!session) return { ok: false, error: 'Session not found' };
+
+    let touched = false;
+    const blocks: SessionBlock[] = session.blocks.map((block) => {
+      if (block.letter !== blockLetter) return block;
+      return {
+        ...block,
+        exercises: block.exercises.map((be) => {
+          if (be.slot !== slot || be.sets.length === 0) return be;
+          const last = be.sets[be.sets.length - 1]!;
+          touched = true;
+          return {
+            ...be,
+            sets: [...be.sets, { ...last, kind: 'working', setNumber: last.setNumber + 1 }],
+          };
+        }),
+      };
+    });
+    if (!touched) return { ok: false, error: 'Exercise not found in this session' };
+
+    await repo.updateSession(sessionId, { blocks });
+    revalidateTag(TAGS.sessions);
+    return { ok: true, data: blocks };
   } catch (err) {
     return fail(err);
   }
