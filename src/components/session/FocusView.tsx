@@ -1,4 +1,5 @@
 'use client';
+import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ViewListIcon from '@mui/icons-material/ViewList';
@@ -32,6 +33,9 @@ interface Props {
   onExpand: (id: string) => void;
   keyFor: (setNumber: number) => string;
   onComplete: (setNumber: number, restSec: number, value: LoggedValue) => void;
+  /** "One more of this than the plan said" — appends a set cloned from the last one. */
+  onAddSet: () => void;
+  addingSet: boolean;
   position: { index: number; total: number };
   onPrev: () => void;
   onNext: () => void;
@@ -52,7 +56,7 @@ interface Props {
 export function FocusView({
   block, exercise, exerciseName, logged, carriedWeightKg, suggestedWeightKg, increment,
   barbell, loadable, microPlates, context, expandedSet, onExpand, keyFor, onComplete,
-  position, onPrev, onNext, canPrev, canNext, onShowList,
+  onAddSet, addingSet, position, onPrev, onNext, canPrev, canNext, onShowList,
 }: Props) {
   const nextUnlogged = exercise.sets.find((s) => !logged[keyFor(s.setNumber)]);
   const heroSet = nextUnlogged ?? exercise.sets[exercise.sets.length - 1];
@@ -132,6 +136,14 @@ export function FocusView({
           </>
         );
       })()}
+
+      <Button
+        size="small" variant="text" startIcon={<AddIcon fontSize="small" />}
+        loading={addingSet} onClick={onAddSet}
+        sx={{ mt: 1, borderRadius: 999, color: 'text.secondary' }}
+      >
+        Add set
+      </Button>
     </Box>
   );
 }

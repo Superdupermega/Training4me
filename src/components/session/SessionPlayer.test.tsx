@@ -14,11 +14,13 @@ const beginSession = vi.fn();
 const finishSession = vi.fn();
 const logSets = vi.fn();
 const applyAutoregulation = vi.fn().mockResolvedValue({ ok: true });
+const addSet = vi.fn().mockResolvedValue({ ok: true });
 vi.mock('@/server/actions', () => ({
   beginSession: (...args: unknown[]) => beginSession(...args),
   finishSession: (...args: unknown[]) => finishSession(...args),
   logSets: (...args: unknown[]) => logSets(...args),
   applyAutoregulation: (...args: unknown[]) => applyAutoregulation(...args),
+  addSet: (...args: unknown[]) => addSet(...args),
 }));
 
 // The outbox has its own dedicated tests (outbox.test.ts) against a fake
@@ -62,6 +64,7 @@ describe('SessionPlayer finish flow', () => {
     finishSession.mockReset();
     logSets.mockReset();
     applyAutoregulation.mockClear();
+    addSet.mockClear();
   });
 
   function twoSetMainBlock() {
@@ -347,6 +350,65 @@ describe('SessionPlayer focus mode (docs/chunks/chunk-22-player-feel.md §2)', (
 
     expect(await screen.findByText('Back Squat')).toBeInTheDocument();
     expect(screen.getByText('Bench Press')).toBeInTheDocument();
+  });
+});
+
+describe('SessionPlayer "Add set"', () => {
+  beforeEach(() => {
+    push.mockClear();
+    refresh.mockClear();
+    beginSession.mockReset();
+    finishSession.mockReset();
+    logSets.mockReset();
+    applyAutoregulation.mockClear();
+    addSet.mockClear();
+    vi.mocked(enqueue).mockClear();
+  });
+
+  function oneSetMainBlock() {
+    return [{
+      letter: 'A', kind: 'main', name: 'Main lift', estimatedSec: 600,
+      exercises: [{
+        slot: 'A1', exerciseId: 'back-squat', tempo: '20X1', cue: 'Brace and drive.',
+        sets: [
+          { setNumber: 1, kind: 'working', reps: 5, weightKg: 100, restSec: 0, estimatedSec: 30 },
+        ],
+      }],
+    }] as SessionRow['blocks'];
+  }
+
+  it('clones the last set of the movement onto the end, in focus view, and persists it', async () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: oneSetMainBlock() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Add set' }));
+
+    expect(await screen.findByLabelText('Complete set 2')).toBeInTheDocument();
+    await waitFor(() => expect(addSet).toHaveBeenCalledTimes(1));
+    const [sessionId, sentBlocks] = addSet.mock.calls[0] as [string, SessionRow['blocks']];
+    expect(sessionId).toBe('s1');
+    expect(sentBlocks[0]!.exercises[0]!.sets).toHaveLength(2);
+    expect(sentBlocks[0]!.exercises[0]!.sets[1]).toMatchObject({
+      setNumber: 2, kind: 'working', reps: 5, weightKg: 100,
+    });
+  });
+
+  it('adds the set to the right movement from the list view too', async () => {
+    render(
+      <SessionPlayer
+        session={session({ blocks: oneSetMainBlock() })}
+        increment={2.5} initialLogged={{}}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'List' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Add set' }));
+
+    expect(await screen.findByLabelText('Complete set 2')).toBeInTheDocument();
   });
 });
 

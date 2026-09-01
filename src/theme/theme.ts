@@ -189,6 +189,16 @@ export const theme = createTheme({
         },
       },
     },
+    // The list view's block accordions (ListView.tsx) predate the card-craft
+    // pass above and were left as a plain 1px border — the same flat,
+    // spreadsheet-y look that pass exists to fix everywhere else. Same
+    // shadow, no hover variant: an accordion header isn't a button, it's a
+    // toggle, so there's no separate "interactive sub-area" to lift.
+    MuiAccordion: {
+      styleOverrides: {
+        root: { boxShadow: CARD_SHADOW, '&::before': { display: 'none' } },
+      },
+    },
     MuiChip: {
       styleOverrides: {
         root: { fontWeight: 600 },

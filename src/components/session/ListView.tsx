@@ -2,7 +2,9 @@
 import Accordion from '@mui/material/Accordion';
 import AccordionDetails from '@mui/material/AccordionDetails';
 import AccordionSummary from '@mui/material/AccordionSummary';
+import AddIcon from '@mui/icons-material/Add';
 import Box from '@mui/material/Box';
+import Button from '@mui/material/Button';
 import Chip from '@mui/material/Chip';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import Stack from '@mui/material/Stack';
@@ -30,6 +32,9 @@ interface Props {
   keyFor: (blockLetter: string, slot: string, setNumber: number) => string;
   slotKeyFor: (blockLetter: string, slot: string) => string;
   onComplete: (block: SessionBlock, slot: string, exerciseId: string, setNumber: number, restSec: number, value: LoggedValue) => void;
+  /** "One more of this than the plan said" — appends a set cloned from the last one on that movement. */
+  onAddSet: (blockLetter: string, slot: string) => void;
+  addingSet: boolean;
 }
 
 /**
@@ -42,7 +47,7 @@ interface Props {
  */
 export function ListView({
   blocks, logged, contexts, increment, microPlates, carried, expandedSet, onExpand,
-  openBlock, onToggleBlock, keyFor, slotKeyFor, onComplete,
+  openBlock, onToggleBlock, keyFor, slotKeyFor, onComplete, onAddSet, addingSet,
 }: Props) {
   return (
     <>
@@ -127,6 +132,13 @@ export function ListView({
                     </Stack>
                     <RampLadder ramps={ramps}>{ramps.map(renderSet)}</RampLadder>
                     {working.map(renderSet)}
+                    <Button
+                      size="small" variant="text" startIcon={<AddIcon fontSize="small" />}
+                      loading={addingSet} onClick={() => onAddSet(block.letter, be.slot)}
+                      sx={{ ml: 1, mt: 1, borderRadius: 999, color: 'text.secondary' }}
+                    >
+                      Add set
+                    </Button>
                   </Box>
                 );
               })}

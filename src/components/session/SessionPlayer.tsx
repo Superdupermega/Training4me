@@ -19,7 +19,7 @@ import { clock, minutes, setTargetText } from '@/components/format';
 import { TopBar } from '@/components/nav/TopBar';
 import { getExercise } from '@/core/library/exercises';
 import type { BlockExercise, Readiness, SessionBlock } from '@/core/types';
-import { applyAutoregulation, beginSession, finishSession, logSets } from '@/server/actions';
+import { addSet, applyAutoregulation, beginSession, finishSession, logSets } from '@/server/actions';
 import type { ExerciseContext } from '@/server/exerciseContext';
 import type { LoggedSetRow, SessionRow } from '@/server/repo';
 import { visuallyHidden } from '@/components/visuallyHidden';
@@ -210,6 +210,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
   const [queued, setQueued] = useState(0);
   const [toast, setToast] = useState<string | null>(null);
   const [confirmFinish, setConfirmFinish] = useState(false);
+  const [addingSet, setAddingSet] = useState(false);
   const [finishing, setFinishing] = useState(false);
   const [finishError, setFinishError] = useState<string | null>(null);
   const [askReadiness, setAskReadiness] = useState(session.status === 'planned');
@@ -350,6 +351,29 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
     [flush, session.id, blocks, increment],
   );
 
+  // "I did one more of this than the plan said" — clones the last set on
+  // that movement onto the end (same weight/reps/tempo/rest) and persists
+  // it the same way the RPE backoff above does, so a reload mid-session
+  // doesn't quietly drop it back to the original prescription.
+  const handleAddSet = useCallback(async (blockLetter: string, slot: string) => {
+    setAddingSet(true);
+    const nextBlocks = blocks.map((b) => {
+      if (b.letter !== blockLetter) return b;
+      return {
+        ...b,
+        exercises: b.exercises.map((e) => {
+          if (e.slot !== slot || e.sets.length === 0) return e;
+          const last = e.sets[e.sets.length - 1]!;
+          return { ...e, sets: [...e.sets, { ...last, kind: 'working' as const, setNumber: last.setNumber + 1 }] };
+        }),
+      };
+    });
+    setBlocks(nextBlocks);
+    const result = await addSet(session.id, nextBlocks);
+    if (!result.ok) setToast(`Could not add the set: ${result.error}`);
+    setAddingSet(false);
+  }, [blocks, session.id]);
+
   const totals = useMemo(() => {
     const all = blocks.flatMap((b) => b.exercises.flatMap((e) =>
       e.sets.filter((s) => s.kind !== 'ramp').map((s) => key(b.letter, e.slot, s.setNumber))));
@@ -400,7 +424,7 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
   }, [router, session.id]);
 
   return (
-    <Box sx={{ minHeight: '100dvh', pb: rest ? 16 : 12 }}>
+    <Box sx={{ minHeight: '100dvh', pb: rest ? 20 : 12 }}>
       <ReadinessDialog
         open={askReadiness}
         onSkip={() => startSession(null)}
@@ -459,6 +483,8 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
           keyFor={(setNumber) => key(currentBlock.letter, currentExercise.slot, setNumber)}
           onComplete={(setNumber, restSec, value) =>
             complete(currentBlock, currentExercise.slot, currentExercise.exerciseId, setNumber, restSec, value)}
+          onAddSet={() => handleAddSet(currentBlock.letter, currentExercise.slot)}
+          addingSet={addingSet}
           position={{ index: Math.max(0, cursorIndex), total: movements.length }}
           onPrev={() => cursorIndex > 0 && setCursor(movements[cursorIndex - 1]!)}
           onNext={() => cursorIndex < movements.length - 1 && setCursor(movements[cursorIndex + 1]!)}
@@ -488,16 +514,26 @@ export function SessionPlayer({ session, increment, initialLogged, contexts, mic
             keyFor={key}
             slotKeyFor={slotKey}
             onComplete={complete}
+            onAddSet={handleAddSet}
+            addingSet={addingSet}
           />
         </>
       )}
       </Box>
 
+      {/*
+        Always docked at the very bottom, resting or not — the rest timer
+        used to shove this bar up 96px while it ran, which meant the one
+        button that ends the session moved under the athlete's thumb mid-set
+        and the two bars together walled off the whole bottom edge. The
+        timer now floats above this bar instead (RestTimer), so this one
+        never moves.
+      */}
       <Paper
         elevation={0}
         sx={{
-          position: 'fixed', left: 0, right: 0, bottom: rest ? 96 : 0, zIndex: 15,
-          p: 2, pb: rest ? 2 : 'calc(16px + env(safe-area-inset-bottom))',
+          position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 15,
+          p: 2, pb: 'calc(16px + env(safe-area-inset-bottom))',
           borderTop: 1, borderColor: 'divider', bgcolor: 'background.paper',
         }}
       >

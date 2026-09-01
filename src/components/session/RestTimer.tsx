@@ -149,14 +149,20 @@ export function RestTimer({ endsAt, totalSec, onAdjust, onDismiss, nextSet }: Pr
     <Paper
       elevation={0}
       sx={{
-        position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 20,
-        borderTop: 1, borderColor: 'divider', p: 2,
-        pb: 'calc(16px + env(safe-area-inset-bottom))', bgcolor: 'background.paper',
+        // A floating card, clear of the "Finish session" bar below it,
+        // rather than a full-bleed dock that used to wall off the whole
+        // bottom edge together with that bar (and shove it up 96px while
+        // resting) — see SessionPlayer.tsx's own comment on the same fix.
+        position: 'fixed', left: '50%', transform: 'translateX(-50%)',
+        bottom: 'calc(96px + env(safe-area-inset-bottom))', zIndex: 20,
+        width: 'calc(100% - 32px)', maxWidth: 480,
+        borderRadius: 4, p: 2, bgcolor: 'background.paper',
+        boxShadow: '0 12px 28px -8px rgba(0,0,0,0.28), 0 2px 10px rgba(0,0,0,0.14)',
       }}
       role="timer"
       aria-live="off"
     >
-      <Stack spacing={0.5} sx={{ maxWidth: 680, mx: 'auto' }}>
+      <Stack spacing={0.5}>
         <ButtonBase
           onClick={() => setExpanded(true)} aria-label="Expand rest timer"
           sx={{ justifyContent: 'flex-start', borderRadius: 2 }}

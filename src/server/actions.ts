@@ -202,6 +202,25 @@ export async function applyAutoregulation(sessionId: string, blocks: SessionBloc
   }
 }
 
+/**
+ * Persists "one more set of this movement than the plan prescribed" —
+ * `SessionPlayer` computes the appended set client-side (cloning the last
+ * one on that exercise) the same way it computes the RPE backoff above, and
+ * this just saves the result the same way `applyAutoregulation` does, so a
+ * reload mid-session doesn't quietly drop the extra set back to what the
+ * plan originally said.
+ */
+export async function addSet(sessionId: string, blocks: SessionBlock[]): Promise<Result> {
+  try {
+    await requireUnlocked();
+    await repo.updateSession(sessionId, { blocks });
+    revalidateTag(TAGS.sessions);
+    return { ok: true };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
 export async function finishSession(sessionId: string, actualSec: number, notes?: string): Promise<Result> {
   try {
     await requireUnlocked();
