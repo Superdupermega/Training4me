@@ -13,9 +13,14 @@ a week they can train; the app generates a full training period (a mesocycle of
 4 or 6 weeks), day by day, set by set, then guides them through each session and
 logs it.
 
-One user = one athlete. This is not a coaching platform. No teams, no social, no
-chat, no video. Multi-user only in the sense that auth exists and rows are
-isolated.
+One user = one athlete. This is not a coaching platform in the sense of
+serving many athletes — no teams, no client management, no other person's
+data ever enters this app, multi-user only in the sense that auth exists and
+rows are isolated. From v3 (`docs/11-COACH-PLATFORM.md`) it does have an AI
+coach *for* that one athlete — chat, session debriefs, program-change
+proposals, all reading only this athlete's own log and gated off entirely
+when `ANTHROPIC_API_KEY` isn't set. The distinction is who the coach serves,
+not whether one exists.
 
 ### The five product constraints — never violate these
 
@@ -144,7 +149,7 @@ lets a chunk be verified without a database.
   Never throw across the server/client boundary.
 - **Commits**: Conventional Commits (`feat:`, `fix:`, `chore:`, `test:`, `docs:`).
   One commit per chunk minimum; more is fine.
-- **Branch**: `claude/training-schedule-app-plan-hq2si9`.
+- **Branch**: `main`.
 
 ## 6. Definition of done for any chunk
 
