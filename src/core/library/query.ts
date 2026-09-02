@@ -15,7 +15,14 @@ export function isAvailable(ex: Exercise, equipment: Equipment[]): boolean {
   return ex.equipment.every((item) => equipment.includes(item));
 }
 
-function isPermitted(ex: Exercise, ctx: LibraryContext): boolean {
+/**
+ * Exported for `src/core/coach/applyProposal.ts` (chunk 28) — a
+ * `swap_exercise` proposal's target must pass exactly the same
+ * equipment/complexity/pain check `find`/`substitute` already apply to
+ * every other exercise this app ever offers, reused directly rather than
+ * re-derived a second time (`docs/11-COACH-PLATFORM.md §4`).
+ */
+export function isPermitted(ex: Exercise, ctx: LibraryContext): boolean {
   // Library-only movements (chunk 16) are visible in the browser and the
   // program builder but never reachable by the generator or its substitution
   // ladder — this is the one gate both paths share, so there is nowhere for

@@ -28,6 +28,16 @@ export interface CoachMessage {
   kind: 'chat' | 'debrief';
   content: string;
   sessionId: string | null;
+  /**
+   * The validated `ProposedChange` (`@/core/coach/tools`), never raw model
+   * output — kept `unknown` at this layer deliberately (the same way every
+   * other `t4m_*` jsonb column here is a plain shape, not a domain type) so
+   * this file doesn't need to import `src/core/coach/tools`; the one real
+   * consumer (`applyCoachProposal` in `actions.ts`) re-validates it through
+   * `proposedChangeSchema` before ever using it, which is also a second,
+   * free defence against a row a proposal-status transition might otherwise
+   * trust blindly (`docs/chunks/chunk-28-proposal.md §3`).
+   */
   proposal: unknown | null;
   proposalStatus: 'pending' | 'applied' | 'dismissed' | null;
   createdAt: string;
@@ -60,6 +70,9 @@ export interface InsertCoachMessageInput {
   kind: 'chat' | 'debrief';
   content: string;
   sessionId?: string | null;
+  /** Set together — a message only ever carries a `proposalStatus` when it carries a `proposal` (`docs/11-COACH-PLATFORM.md §3`). */
+  proposal?: unknown | null;
+  proposalStatus?: 'pending' | 'applied' | 'dismissed' | null;
 }
 
 export async function insertCoachMessage(msg: InsertCoachMessageInput): Promise<CoachMessage> {
@@ -68,10 +81,32 @@ export async function insertCoachMessage(msg: InsertCoachMessageInput): Promise<
     .insert({
       role: msg.role, kind: msg.kind, content: msg.content,
       session_id: msg.sessionId ?? null,
+      proposal: msg.proposal ?? null,
+      proposal_status: msg.proposalStatus ?? null,
     })
     .select('*').single();
   if (error) throw new Error(error.message);
   return toCoachMessage(data as CoachMessageRecord);
+}
+
+/**
+ * Loads one message by id — `applyCoachProposal`/`dismissCoachProposal`
+ * (`src/server/coach/actions.ts`) need the specific row a proposal card's
+ * buttons refer to, not the trimmed chat-history window `listCoachMessages`
+ * returns. Deliberately not `unstable_cache`d, same reasoning as
+ * `getDebriefForSession` below: the very next thing either action does is
+ * decide whether to write to this row, based on what it just read.
+ */
+export async function getCoachMessage(id: string): Promise<CoachMessage | null> {
+  const { data, error } = await db().from('t4m_coach_message').select('*').eq('id', id).maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? toCoachMessage(data as CoachMessageRecord) : null;
+}
+
+/** Resolves a pending proposal one way or the other — never touches `proposal` itself, only its status. */
+export async function setProposalStatus(id: string, status: 'applied' | 'dismissed'): Promise<void> {
+  const { error } = await db().from('t4m_coach_message').update({ proposal_status: status }).eq('id', id);
+  if (error) throw new Error(error.message);
 }
 
 /**

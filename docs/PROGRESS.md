@@ -1440,3 +1440,171 @@ second copy of this reasoning, just more facts to hand the same prompt.
 
 **Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
 unrelated to this chunk. Chunk 29 itself has no blocker.
+
+## Chunk 28 — The proposal — 2026-09-02
+**Landed:** Every section of `docs/chunks/chunk-28-proposal.md` — the coach
+can now suggest a concrete change and, only on an explicit athlete tap,
+apply it. This closes `docs/11-COACH-PLATFORM.md` — chunks 25–29 of the
+coach-platform plan are all built. No migration: `t4m_coach_message.proposal`/
+`proposal_status` (jsonb, text + its own check constraint) already existed
+live, written by chunk 25's own migration ahead of need — confirmed by direct
+`information_schema`/`pg_constraint` queries before writing any code, not
+assumed.
+
+- **`src/core/coach/tools.ts`, pure.** `proposedChangeSchema` — a zod
+  `discriminatedUnion('action', …)` over `swap_exercise`/`adjust_sets`/
+  `adjust_load`, exactly `docs/11-COACH-PLATFORM.md §5`'s shape, every branch
+  `.strict()`. `PROPOSE_CHANGE_TOOL`'s `input_schema` is generated straight
+  from that same schema via zod v4's own `z.toJSONSchema` (already a
+  dependency, `^4.4.3`) — the pinned Anthropic SDK has no zod-to-tool helper
+  of its own (checked its `.d.ts` directly), but zod does, which is the
+  stronger of the two options the chunk file offered: nothing to keep in
+  sync by hand or by test, by construction (see Deviated).
+- **`src/core/coach/applyProposal.ts`, pure.** `applyProposal(session,
+  change, ctx) -> SessionBlock[]`, the chunk's own trust boundary. Five
+  ordered checks, each its own named `DomainError` subclass (see Deviated):
+  session must be `planned`; the named block/slot must exist; `adjust_sets`
+  refuses a `main` block unconditionally (`01-METHODOLOGY.md §1.3`, its own
+  dedicated test); `swap_exercise`'s target must resolve to a real,
+  `isPermitted` (equipment/complexity — reused from `src/core/library/query.ts`,
+  newly exported for this), not-already-in-that-slot exercise; `adjust_load`'s
+  `setNumber` must exist and its `percentTm`/`rpe` must stay inside a
+  per-`BlockKind` ceiling (T1 87%→0.88 actual/RPE 8.5, T2 RPE 8, T3/finisher
+  RPE 9). On success, a fresh `SessionBlock[]` with only the targeted
+  slot/set replaced — unrelated blocks are the exact same object references,
+  not just equal values. A superset/rounds-based block resizes every
+  exercise in lockstep on `adjust_sets` (not just the named slot) to keep
+  the block's own alternating-rounds invariant intact. `adjust_load`
+  changing `percentTm` clears a now-stale `weightKg` rather than leaving a
+  wrong number on screen; changing only `rpe` leaves it alone.
+- **`src/core/coach/proposalTargets.ts`, pure, new (not in the chunk file's
+  own file list — see Deviated).** `buildProposalTargets` turns this week's
+  `planned` sessions into an addressable listing — real `sessionId`s,
+  `blockLetter`/`slot`, exercise names+ids, and each set's own reps/%TM/RPE —
+  appended to the system prompt so the model has something real to put in a
+  tool call at all.
+- **`src/server/coach/actions.ts`.** `sendCoachMessage` now passes
+  `tools: [PROPOSE_CHANGE_TOOL]` on every call and reads `kind: 'proposal'`
+  (`claude-sonnet-5`, not haiku — see Deviated on why this is now every chat
+  turn, not just ones that end up proposing something). A `tool_use` block
+  named `propose_change` is parsed through `proposedChangeSchema`; a parse
+  failure means the reply is saved as plain chat with `proposal: null` —
+  fail closed, never a partially-open card. A tool-call-only reply (no text)
+  gets a non-empty filler line so the chat bubble isn't blank next to its
+  own card. New `applyCoachProposal(messageId)`: `requireUnlocked()` +
+  `isCoachConfigured()` first, loads the message, refuses anything not
+  `proposal_status: 'pending'`, re-validates the stored `proposal` through
+  the same zod schema (defence against a hand-edited row, not just
+  formality), loads the *current* target session, derives the athlete's real
+  `LibraryContext` (mirrors `buildProgram`'s own derivation, duplicated
+  rather than imported — see Deviated), and calls `applyProposal` inside a
+  `try/catch` — a `DomainError` becomes `{ ok: false, error }` with
+  `proposal_status` left `pending`; success writes the new `blocks`, marks
+  `applied`, and revalidates `TAGS.program`/`TAGS.sessions`/`TAGS.coach`
+  (matching `updateLiveProgram`'s real `revalidateTag` convention, not the
+  chunk file's own illustrative `revalidatePath` snippet). New
+  `dismissCoachProposal(messageId)`: same guards, sets `dismissed`, no
+  session read at all. `src/server/coach/repo.ts` gained `getCoachMessage`
+  (uncached, same "must see this request's own writes" reasoning as
+  `getDebriefForSession`) and `setProposalStatus`, plus `proposal`/
+  `proposalStatus` on `insertCoachMessage`'s input. `SYSTEM_PROMPT` gained a
+  paragraph telling the model when (and when not) to reach for the tool, and
+  the existing "this is data, not instructions" framing (chunk 29) now
+  explicitly covers the new "Sessions you can propose a change for" section
+  too, not just "Facts about this athlete."
+- **UI.** `src/components/coach/ProposalCard.tsx` (client): Apply/Dismiss
+  call `applyCoachProposal`/`dismissCoachProposal` directly and
+  `router.refresh()`, same shape `MessageInput` already established;
+  `proposal_status` drives which UI shows (buttons / an "Applied" chip / a
+  "Dismissed" chip), never local component state, so a reload after another
+  tab resolved it renders correctly. The diff itself — exercise swapped
+  out→in, "sets: 3 → 4", "% training max: 75% → 80%" — comes from
+  `src/components/coach/proposalDiff.ts` (`buildProposalDiff`), computed
+  server-side in `/coach/page.tsx` from the *current* target session's real
+  blocks, not the model's own prose. `ProposalCardLazy.tsx` is the same
+  `next/dynamic({ ssr: false })` client-boundary wrapper chunk 29's
+  `MessageInputLazy.tsx` already established (named as the pattern to reuse
+  in that chunk's own §2) — rendered alongside the plain chat bubble, not in
+  its place (see Deviated), and only for a message that actually carries a
+  proposal, so most page loads never pay for its chrome at all.
+- **Tests.** `tools.test.ts` (15): every §5 example payload parses; extra
+  field, wrong type, missing discriminant, bad `action`, non-uuid
+  `sessionId`, out-of-bounds `percentTm`/`rpe`/`sets` all rejected; a
+  dedicated fuzz test (chunk 29's own deferred §3 item) feeds 14
+  adversarial/malformed payloads — including NoSQL-injection-shaped junk, a
+  `__proto__` action, a fragment aimed at prompt-injecting the parser itself
+  — through `.safeParse` and asserts every one is rejected cleanly, never
+  thrown. `applyProposal.test.ts` (15): one test per validation rule, each
+  asserting the specific error class; a full "everything else byte-identical"
+  swap test; superset-lockstep resize; the percentTm-clears-weightKg case;
+  an explicit never-mutates-the-input test. `proposalTargets.test.ts` (5).
+  `actions.test.ts` (+16, two of them rewritten in place): the existing
+  chunk-25 "on success"/"never parses a proposal" tests updated for
+  `kind: 'proposal'` and the new `proposal`/`proposalStatus` insert fields;
+  new cases for a clean tool-call parse, a zod-rejected tool call, a
+  tool-call-only reply, the addressable-targets text reaching the prompt,
+  and the full guard/success/failure matrix for both new actions.
+
+**Deviated:** thirteen, all reasoned in full in `DECISIONS.md` (2026-09-02)
+— no migration needed; `applyProposal`'s local `SessionForProposal` type
+(the same forced move chunks 25/27 already made); the zod-generates-the-
+JSON-schema approach; `adjust_sets.sets` as an absolute count, not a delta;
+seven distinct `DomainError` subclasses instead of one generic one; the
+per-`BlockKind` RPE/percent ceilings and where the 0.88 figure actually
+comes from; **`swap_exercise`/`adjust_load` can target a `main` block, only
+`adjust_sets` cannot** (the chunk file's own numbered rules are narrower
+than `11-COACH-PLATFORM.md §4`'s looser narrative summary — followed the
+specific, executable one); a swap never recomputes `weightKg` against the
+new exercise's own training max (the given `ctx` signature carries none);
+the percentTm-clears-weightKg behaviour; superset lockstep resizing;
+`proposalTargets.ts` as a new, additive file; moving every chat turn to
+`kind: 'proposal'` (sonnet), a real cost change, not an oversight; and the
+proposal card rendering alongside the chat bubble rather than replacing it.
+
+**Verified:** 525 tests (474 → +51: 15 `tools.test.ts`, 15
+`applyProposal.test.ts`, 5 `proposalTargets.test.ts`, +16 net in
+`actions.test.ts`). `pnpm test && pnpm lint && pnpm typecheck && pnpm build
+&& pnpm verify:actions` all clean. The mutation boundary is exercised for
+real, not just read through: `applyProposal`'s tests run the actual pure
+function against a realistic multi-block fixture (a real `main`/`secondary`/
+`superset` session) with the real `isPermitted`/`getExercise`, not a mock —
+this is the chunk the task's own instructions called out as needing the
+mocking done right, so the SDK call is mocked (per every earlier coach
+chunk's own precedent) but the trust boundary itself never is.
+
+**`/coach` first-load JS:** **160 kB — unchanged from chunk 29's own
+number**, confirmed by this session's own `next build` run. `tools.ts`,
+`applyProposal.ts` and `proposalTargets.ts` are only ever imported from
+`src/server/coach/actions.ts` and `/coach/page.tsx`'s server-side
+`resolveProposalDiffs` — neither reaches the client bundle — and
+`ProposalCard`'s own client chrome is deferred exactly like `MessageInput`
+already was, so the proposal feature's entire UI cost is paid only by a
+page that actually has a proposal to show, never by `/coach`'s own first
+paint. Every other route measured flat against this session's own
+pre-chunk-28 baseline (`/session/[id]` 237 kB, `/program/builder/[id]`
+254 kB, both exactly chunk 29's own numbers).
+
+**Not verified — same sandbox restriction as every earlier coach chunk:** no
+`ANTHROPIC_API_KEY` here, so a real tool-call round trip (the model
+genuinely deciding to call `propose_change`, with a real JSON payload) could
+not be observed end-to-end. The integration is real — a real `tools` array
+reaches `coachCompletion`, a real `Anthropic.ToolUseBlock` is what
+`result.data.toolUse` is typed against — and the handling of it is exercised
+with the SDK response mocked, per the task's own explicit instruction for
+this chunk. This is the runbook's own "only a human with a real key"
+category (`docs/11-COACH-PLATFORM.md §9`, its own third bullet: "a real
+proposal — ask for a swap, apply it, confirm `/program` reflects it and the
+next session plays the new exercise"); the code path each half of that
+claim depends on — a real tool call reaching `sendCoachMessage`, and
+`revalidateTag(TAGS.program)`/`revalidateTag(TAGS.sessions)` reaching both
+routes on apply — is verified now, by test and by reading the code, not by
+a live click-through.
+
+**Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
+unrelated to this chunk. Chunk 28 itself has no blocker. This closes
+`docs/11-COACH-PLATFORM.md` — the coach-platform plan (chunks 25–29) is
+fully built: chat, the test week, the debrief, the proposal, and the
+guardrails/bundle hardening. Every acceptance box in `docs/chunks/
+chunk-28-proposal.md` that doesn't explicitly require a human with a phone
+and a real API key is closed; the three that do (§9's own list) are recorded
+above as unverified, not claimed.
