@@ -1102,3 +1102,91 @@ nothing here suggests it needs to run early on this number alone.
 unrelated to this chunk. Chunk 25 itself has no blocker: the migration
 applied and verified live, and every acceptance box that can be closed
 without a real `ANTHROPIC_API_KEY` is closed.
+
+## Chunk 26 — The test week — 2026-09-02
+**Landed:** The opt-in alternative to an inferred training-max verdict from
+`docs/chunks/chunk-26-test-week.md`, independent of chunk 25's coach (no
+`src/core/coach`/`src/server/coach` code touched).
+
+- **Migration.** `t4m_training_max_source_check` widened to allow `'tested'`
+  alongside the existing five values — applied live to `cyberpunk-vibe01`
+  and reconfirmed afterwards with a direct `pg_constraint` query, per the
+  chunk's own instruction and the chunk-23 precedent.
+- **`src/core/progression/testWeek.ts`, pure.** `trainingMaxFromTestResult`
+  (a tested single rounds to itself; a rep-max runs through
+  `epley`/`trainingMaxFromOneRepMax` — deliberately *not*
+  `estimateTrainingMax`'s extra first-block haircut, see Deviated).
+  `buildTestWeek` walks a finished block's week-one template, keeps only the
+  sessions whose main lift is in `testExerciseIds`, and for each emits the
+  day's original primer verbatim, a test-single main block (the same
+  0.4/0.6/0.8 ramp shape `prescriptionFor` already uses, ending on one `top`
+  set at the current training max, RPE 9 — falls back to RPE-only with no
+  fabricated weight when there's no training max on file), and a two-set
+  light pass at the day's original secondary movement. No trimming ladder,
+  no balance repair — these sessions are short by construction. 11 tests.
+- **`src/server/nextBlock.ts`.** `rollOverTrainingMaxes` now takes the block
+  to roll over as a parameter (instead of calling `getActiveProgram()`
+  itself) plus an optional `TestedOverride[]` — a tested lift skips
+  inference entirely and is written under `source: 'tested'`; everything
+  else still infers and writes `'progressed'`, exactly as before. 5 new
+  tests (mocked `repo`, same pattern chunk 25 established for
+  `coach/actions.test.ts`).
+- **`src/server/testWeek.ts`, new.** `startTestWeek` reads the active
+  (finished) block's week-one sessions, defaults `testExerciseIds` to every
+  T1 lift actually trained, builds the week, and persists it via
+  `repo.persistProgram` itself — the same insert path `buildProgram` and
+  `scheduleRoutine` already use, so it becomes the new active program with
+  zero new session-insert code. `testWeekMeta`/`TestWeekMeta` mark a
+  test-week program the same way `scheduleRoutine` already marks a
+  builder-sourced one (`input.source`, not a real `GeneratorInput`).
+  `computeTestedOverrides` reads back the heaviest logged, non-skipped
+  attempt per tested exercise (an on-the-fly set beats the prescribed slot
+  if it's heavier) and turns it into a `{exerciseId, value, reason}` ready
+  for `rollOverTrainingMaxes`. 9 tests, including an integration-shaped one
+  proving a test-week session's blocks carry everything `LoggedSetRow`
+  needs, with unique `(session, block, slot, set)` keys.
+- **`src/server/actions.ts`.** New `finishBlock` helper is the one shared
+  tail both `startNextBlock` (unchanged behaviour, empty override list) and
+  the new `applyTestWeekResults` (looks up the test week's parent block,
+  computes overrides, then calls the same tail) run through — one
+  implementation of "roll over, save, build the next block," not two. New
+  `startTestWeek` action wraps `testWeek.startTestWeek()`.
+- **UI.** New `BlockDecisionButtons` (client) holds the two server calls and
+  their pending/error state once; used by `NextBlockCard` (`/today`, gains
+  "Test your maxes first" alongside "Start next block") and by
+  `/program/complete`'s pre-decision state (satisfies the acceptance box's
+  literal wording — see Deviated). New `TestWeekDoneCard` replaces
+  `NextBlockCard` on `/today` once a test week's own sessions are all done
+  (`testWeekMeta(program) != null`), with the single "Apply and start next
+  block" button. No changes anywhere in `src/components/session/` — a test
+  week trains through the exact same player.
+
+**Deviated:** seven, all reasoned in full in `DECISIONS.md` (2026-09-02) —
+the top-single target shape, `buildTestWeek`'s args-object signature versus
+the chunk file's literal two-argument one (purity plus a routine-sourced
+block's missing `input.trainingMaxes`), the rep-max formula skipping
+`estimateTrainingMax`'s haircut, the `input.source` marker convention,
+`rollOverTrainingMaxes`'s new parameter shape plus the shared `finishBlock`
+tail, splitting `setTrainingMaxes` into two calls rather than widening its
+signature, and `BlockDecisionButtons` living in both places the brief
+named rather than picking one.
+
+**Verified:** 453 tests (439 → +14, plus the core test file's own new
+count). `pnpm test && pnpm lint && pnpm typecheck && pnpm build && pnpm
+verify:actions` all clean. The constraint widening was confirmed live with
+a direct `pg_constraint` query, not just assumed from the migration
+succeeding. The live chat/session-player path itself could not be
+exercised end-to-end in this sandbox (same network restriction as every
+earlier chunk) — verification here is the mocked-repo test suite plus a
+real `next build`, consistent with how every other `src/server` chunk in
+this project has been verified.
+
+**Next chunk must know:** `finishBlock` in `actions.ts` is now the one
+place "a block finished, decide the next one" happens — chunk 27/28's
+debrief/proposal work should call into it (or read its result) rather than
+re-deriving training-max roll-over again. `testWeekMeta`/`TEST_WEEK_SOURCE`
+in `src/server/testWeek.ts` is the pattern to check before assuming
+`getActiveProgram()`'s result is a normal generated or routine-built block.
+
+**Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
+unrelated to this chunk.

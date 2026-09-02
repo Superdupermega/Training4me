@@ -8,6 +8,7 @@ import Typography from '@mui/material/Typography';
 import { notFound } from 'next/navigation';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
+import { BlockDecisionButtons } from '@/components/today/BlockDecisionButtons';
 import { getExercise } from '@/core/library/exercises';
 import { buildBlockRetrospective } from '@/core/progression/retrospective';
 import { getLogsForProgram, getProgram, listPRs, listSessions } from '@/server/repo';
@@ -143,9 +144,13 @@ export default async function ProgramCompletePage({
               const tmChanges = program.tmChanges;
               if (tmChanges == null) {
                 return (
-                  <Typography color="text.secondary" sx={{ mt: 1 }}>
-                    Not decided yet — training maxes move when you start the next block.
-                  </Typography>
+                  <Stack spacing={1.5} sx={{ mt: 1 }}>
+                    <Typography color="text.secondary">
+                      Not decided yet — training maxes move when you start the next block, or
+                      test them for real first.
+                    </Typography>
+                    <BlockDecisionButtons programId={programId} />
+                  </Stack>
                 );
               }
               if (tmChanges.length === 0) {

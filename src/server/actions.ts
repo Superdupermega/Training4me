@@ -18,6 +18,7 @@ import * as repo from './repo';
 import { TAGS } from './repo';
 import * as routines from './routines';
 import { ROUTINE_TAG } from './routines';
+import * as testWeek from './testWeek';
 
 export type Result<T = undefined> = { ok: true; data?: T } | { ok: false; error: string };
 
@@ -317,24 +318,80 @@ export async function logBodyweight(kg: number): Promise<Result> {
   }
 }
 
+/**
+ * Shared tail for "a block just finished, decide the next one" — both the
+ * ordinary path (`startNextBlock`, no overrides) and the test-week path
+ * (`applyTestWeekResults`, seeded with what was actually tested) call this
+ * one function rather than each reimplementing "roll over, save, build the
+ * next block." `completed` is the block whose training maxes are rolling
+ * over and whose id the retrospective reads by — see
+ * `nextBlock.ts#rollOverTrainingMaxes` for why it has to be passed in rather
+ * than read from `getActiveProgram()` here.
+ */
+async function finishBlock(
+  completed: repo.ProgramRow | null,
+  testedOverrides: import('./nextBlock').TestedOverride[] = [],
+): Promise<{ completedProgramId: string } | undefined> {
+  const { rollOverTrainingMaxes } = await import('./nextBlock');
+  const changes = await rollOverTrainingMaxes(completed, testedOverrides);
+  // Previously this discarded rollOverTrainingMaxes's return value outright,
+  // so the retrospective had nowhere to read what moved and why. See
+  // docs/chunks/chunk-23-reward-loop.md §1.
+  if (completed) {
+    await repo.saveTmChanges(completed.id, changes);
+    revalidateTag(TAGS.program);
+  }
+  revalidateTag(TAGS.profile);
+  await buildProgram();
+  return completed ? { completedProgramId: completed.id } : undefined;
+}
+
 export async function startNextBlock(): Promise<Result<{ completedProgramId: string } | undefined>> {
   try {
     await requireUnlocked();
-    // Captured before `buildProgram()` below replaces it — this is the block
-    // that just finished, not the one about to exist.
+    // Captured before `finishBlock` calls `buildProgram()`, which replaces
+    // it — this is the block that just finished, not the one about to exist.
     const completed = await repo.getActiveProgram();
-    const { rollOverTrainingMaxes } = await import('./nextBlock');
-    const changes = await rollOverTrainingMaxes();
-    // Previously this was `await rollOverTrainingMaxes();` — the return
-    // value discarded outright, so the retrospective had nowhere to read
-    // what moved and why. See docs/chunks/chunk-23-reward-loop.md §1.
-    if (completed) {
-      await repo.saveTmChanges(completed.id, changes);
-      revalidateTag(TAGS.program);
-    }
-    revalidateTag(TAGS.profile);
-    await buildProgram();
-    return { ok: true, data: completed ? { completedProgramId: completed.id } : undefined };
+    const data = await finishBlock(completed);
+    return { ok: true, data };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+// ---------------------------------------------------------------- test week (chunk 26)
+
+/** `/program/complete`'s "Test your maxes first" — see docs/chunks/chunk-26-test-week.md. */
+export async function startTestWeek(): Promise<Result<{ programId: string; sessionIds: string[] }>> {
+  try {
+    await requireUnlocked();
+    const data = await testWeek.startTestWeek();
+    revalidateTag(TAGS.program);
+    revalidateTag(TAGS.sessions);
+    return { ok: true, data };
+  } catch (err) {
+    return fail(err);
+  }
+}
+
+/**
+ * Finishing the last test session's "Apply and start next block": reads back
+ * what was actually tested, rolls the parent block over with those values
+ * pre-seeded (any lift the test week didn't cover still gets the normal
+ * inferred verdict), and hands off into the exact same next-block build
+ * `startNextBlock` uses.
+ */
+export async function applyTestWeekResults(): Promise<Result<{ completedProgramId: string } | undefined>> {
+  try {
+    await requireUnlocked();
+    const active = await repo.getActiveProgram();
+    const meta = active ? testWeek.testWeekMeta(active) : null;
+    if (!active || !meta) return { ok: false, error: 'No active test week to apply' };
+    const parent = await repo.getProgram(meta.parentProgramId);
+    if (!parent) return { ok: false, error: 'The block this test week followed no longer exists' };
+    const overrides = await testWeek.computeTestedOverrides(active, meta);
+    const data = await finishBlock(parent, overrides);
+    return { ok: true, data };
   } catch (err) {
     return fail(err);
   }

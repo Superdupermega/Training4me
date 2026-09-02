@@ -13,8 +13,10 @@ import { SessionRow } from '@/components/today/SessionRow';
 import { TodayCard } from '@/components/today/TodayCard';
 import { WeekStrip } from '@/components/today/WeekStrip';
 import { NextBlockCard } from '@/components/today/NextBlockCard';
+import { TestWeekDoneCard } from '@/components/today/TestWeekDoneCard';
 import { consistency } from '@/server/analytics';
 import { getActiveProgram, getProfile, listSessions } from '@/server/repo';
+import { testWeekMeta } from '@/server/testWeek';
 
 export const dynamic = 'force-dynamic';
 
@@ -64,6 +66,7 @@ export default async function TodayPage() {
     ?? (sessions.length ? Math.max(...sessions.map((s) => s.weekNumber)) : 1);
   const weekSessions = sessions.filter((s) => s.weekNumber === currentWeek);
   const allDone = sessions.every((s) => s.status === 'completed' || s.status === 'skipped');
+  const isTestWeek = testWeekMeta(program) != null;
 
   return (
     <AppShell title="Today">
@@ -87,7 +90,7 @@ export default async function TodayPage() {
           />
 
           {allDone ? (
-            <NextBlockCard programId={program.id} />
+            isTestWeek ? <TestWeekDoneCard /> : <NextBlockCard programId={program.id} />
           ) : featured && featuredStatus ? (
             <TodayCard session={featured} status={featuredStatus} />
           ) : null}
