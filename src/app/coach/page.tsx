@@ -5,7 +5,7 @@ import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import { AppShell } from '@/components/AppShell';
 import { PageContainer } from '@/components/PageContainer';
-import { MessageInput } from '@/components/coach/MessageInput';
+import { MessageInputLazy } from '@/components/coach/MessageInputLazy';
 import { isCoachConfigured } from '@/server/coach/config';
 import { listCoachMessages } from '@/server/coach/repo';
 
@@ -15,10 +15,12 @@ export const dynamic = 'force-dynamic';
  * `/coach` (chunk 25). Resolves either way — a direct link must never
  * 404 — but only renders a real chat when the coach is actually
  * configured (`docs/11-COACH-PLATFORM.md §1`). The thread itself is
- * server-rendered from `listCoachMessages()`; `MessageInput` is the one
+ * server-rendered from `listCoachMessages()`; `MessageInputLazy` is the one
  * small client island that posts a new turn and asks the server component
  * to re-render (`docs/11-COACH-PLATFORM.md §8`: don't pay for chat chrome
- * JS on every other route).
+ * JS on every other route) — its own heavy component (`MessageInput`, MUI
+ * `TextField`/`IconButton`) is `next/dynamic`-loaded out of this route's
+ * initial JS (`docs/chunks/chunk-29-coach-guardrails.md §2`).
  */
 export default async function CoachPage() {
   if (!isCoachConfigured()) {
@@ -84,7 +86,7 @@ export default async function CoachPage() {
           )}
         </Stack>
         <Box sx={{ position: 'sticky', bottom: { xs: 'calc(72px + env(safe-area-inset-bottom))', md: 16 }, pt: 1 }}>
-          <MessageInput />
+          <MessageInputLazy />
         </Box>
       </PageContainer>
     </AppShell>
