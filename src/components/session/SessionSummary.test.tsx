@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionRow } from '@/server/repo';
 import { SessionSummary } from './SessionSummary';
@@ -13,6 +13,11 @@ const saveSessionNotes = vi.fn();
 vi.mock('@/server/actions', () => ({
   logSets: (...args: unknown[]) => logSets(...args),
   saveSessionNotes: (...args: unknown[]) => saveSessionNotes(...args),
+}));
+
+const generateSessionDebrief = vi.fn();
+vi.mock('@/server/coach/actions', () => ({
+  generateSessionDebrief: (...args: unknown[]) => generateSessionDebrief(...args),
 }));
 
 function session(overrides: Partial<SessionRow> = {}): SessionRow {
@@ -69,5 +74,41 @@ describe('SessionSummary notes (docs/chunks/chunk-23-reward-loop.md §5)', () =>
     fireEvent.blur(field);
 
     expect(await screen.findByText(/Could not save the note/)).toBeInTheDocument();
+  });
+});
+
+describe('SessionSummary — coach debrief (docs/chunks/chunk-27-debrief.md §3)', () => {
+  beforeEach(() => {
+    generateSessionDebrief.mockReset();
+  });
+
+  it('renders no debrief card at all, and never calls the action, when the coach is not configured', () => {
+    render(<SessionSummary session={session()} increment={2.5} initialLogged={{}} prs={[]} />);
+    expect(screen.queryByText("Coach's take")).not.toBeInTheDocument();
+    expect(generateSessionDebrief).not.toHaveBeenCalled();
+  });
+
+  it('when configured: calls the action once for this session and shows the reply once it resolves', async () => {
+    generateSessionDebrief.mockResolvedValue({ ok: true, data: { text: 'Strong squat day.' } });
+    render(
+      <SessionSummary session={session()} increment={2.5} initialLogged={{}} prs={[]} coachConfigured />,
+    );
+    expect(screen.getByText("Coach's take")).toBeInTheDocument();
+    expect(await screen.findByText('Strong squat day.')).toBeInTheDocument();
+    expect(generateSessionDebrief).toHaveBeenCalledTimes(1);
+    expect(generateSessionDebrief).toHaveBeenCalledWith('s1');
+  });
+
+  it('when configured but the call fails: the card disappears entirely rather than showing a broken state', async () => {
+    generateSessionDebrief.mockResolvedValue({ ok: false, error: 'Coach is resting for today — back tomorrow.' });
+    render(
+      <SessionSummary session={session()} increment={2.5} initialLogged={{}} prs={[]} coachConfigured />,
+    );
+    // Skeleton first…
+    expect(screen.getByText("Coach's take")).toBeInTheDocument();
+    // …then nothing, once the failure resolves.
+    await waitFor(() => {
+      expect(screen.queryByText("Coach's take")).not.toBeInTheDocument();
+    });
   });
 });

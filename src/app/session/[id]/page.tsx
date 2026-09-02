@@ -3,6 +3,7 @@ import { SessionPlayer } from '@/components/session/SessionPlayer';
 import { SessionSummary } from '@/components/session/SessionSummary';
 import type { LoggedValue } from '@/components/session/SetRow';
 import type { PainArea } from '@/core/types';
+import { isCoachConfigured } from '@/server/coach/config';
 import { exerciseContext } from '@/server/exerciseContext';
 import { getLoggedSets, getProfile, getSession, listPRsForSession } from '@/server/repo';
 
@@ -32,7 +33,7 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
     return (
       <SessionSummary
         session={session} increment={increment} initialLogged={initialLogged} prs={prs}
-        microPlates={profile.microPlates}
+        microPlates={profile.microPlates} coachConfigured={isCoachConfigured()}
       />
     );
   }

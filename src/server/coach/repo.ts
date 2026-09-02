@@ -94,6 +94,25 @@ export const listCoachMessages = unstable_cache(
   { tags: [TAGS.coach] },
 );
 
+/**
+ * The one debrief row for a session, if one has already been generated —
+ * `generateSessionDebrief` (`src/server/coach/actions.ts`) checks this
+ * before ever calling the model, so reloading a summary never re-bills a
+ * debrief that already exists (`docs/chunks/chunk-27-debrief.md §2`).
+ * Deliberately not `unstable_cache`d, same reasoning as `spentToday`/
+ * `spentThisMonth` below: the *write* that creates this row happens inside
+ * the very call that just checked it was absent, in the same request, so a
+ * stale cached "not found" would be actively wrong, not just slow.
+ */
+export async function getDebriefForSession(sessionId: string): Promise<CoachMessage | null> {
+  const { data, error } = await db()
+    .from('t4m_coach_message')
+    .select('*').eq('kind', 'debrief').eq('session_id', sessionId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data ? toCoachMessage(data as CoachMessageRecord) : null;
+}
+
 export interface UsageEntry {
   kind: 'chat' | 'debrief' | 'proposal';
   model: string;

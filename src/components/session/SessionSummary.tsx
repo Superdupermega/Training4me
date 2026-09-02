@@ -18,6 +18,7 @@ import { getExercise } from '@/core/library/exercises';
 import type { SessionBlock } from '@/core/types';
 import { logSets, saveSessionNotes } from '@/server/actions';
 import type { LoggedSetRow, Pr, SessionRow } from '@/server/repo';
+import { DebriefCard } from './DebriefCard';
 import { PRMoment } from './PRMoment';
 import { SetRow, type LoggedValue } from './SetRow';
 
@@ -39,6 +40,13 @@ interface Props {
   initialLogged: Record<string, LoggedValue>;
   prs: Pr[];
   microPlates?: boolean;
+  /**
+   * `isCoachConfigured()`, checked server-side by the page that renders this
+   * component and passed down — never re-checked here
+   * (`docs/chunks/chunk-27-debrief.md §3`). `false` (the default) renders no
+   * debrief card at all, not even a skeleton.
+   */
+  coachConfigured?: boolean;
 }
 
 /**
@@ -53,7 +61,9 @@ interface Props {
  * set here can never create a duplicate — and re-runs PR detection (#8),
  * so fixing a mistyped weight can retroactively award or revoke a PR.
  */
-export function SessionSummary({ session, increment, initialLogged, prs, microPlates = false }: Props) {
+export function SessionSummary({
+  session, increment, initialLogged, prs, microPlates = false, coachConfigured = false,
+}: Props) {
   const router = useRouter();
   const [logged, setLogged] = useState<Record<string, LoggedValue>>(initialLogged);
   const [expandedSet, setExpandedSet] = useState<string | null>(null);
@@ -136,6 +146,8 @@ export function SessionSummary({ session, increment, initialLogged, prs, microPl
         </Stack>
 
         <PRMoment prs={prs} />
+
+        {coachConfigured && <DebriefCard sessionId={session.id} />}
 
         <TextField
           label="Notes" placeholder="How did it feel? Anything worth remembering next time?"

@@ -1190,3 +1190,105 @@ in `src/server/testWeek.ts` is the pattern to check before assuming
 
 **Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
 unrelated to this chunk.
+
+## Chunk 27 — The debrief — 2026-09-02
+**Landed:** All five sections of `docs/chunks/chunk-27-debrief.md`, on top of
+chunk 25's coach infrastructure (`coachCompletion`, the cap check, the
+`t4m_coach_message` table) — nothing in `src/core/coach`/`src/server/coach`
+from chunk 25 was reworked, only extended.
+
+- **`src/core/coach/debrief.ts`, pure.** `buildDebriefContext` turns one
+  finished session's own facts — prescribed vs. logged set counts, tonnage
+  (non-skipped sets only), actual vs. estimated duration, whether an RPE
+  9.5+ auto-back-off fired, PRs from this exact session, and a "vs. last
+  time" line naming how many earlier same-`mainPattern` sessions are on
+  record and the most recent one's date — into the same kind of compact
+  factual paragraph chunk 25's `context.ts` builds for chat, scoped to one
+  session instead of the whole athlete. Local structural types, not
+  `SessionRow`/`LoggedSetRow`/`Pr` (see Deviated); `SessionBlock` itself is
+  imported straight from `@/core/types` since it's already pure. A missing
+  fact (no PRs, no prior same-pattern session, `actualSec` still null)
+  drops its line entirely rather than printing a placeholder — spot-checked
+  by hand with a realistic multi-block, multi-set, autoregulated, PR-bearing
+  example: every line traces to a real input number, nothing invented,
+  nothing missing that should be there.
+- **`generateSessionDebrief(sessionId)`, `src/server/coach/actions.ts`.**
+  `requireUnlocked()` then `isCoachConfigured()`, both before any database
+  read — the unconfigured path never touches `t4m_coach_message` at all,
+  cache check included. Then: `coachRepo.getDebriefForSession` (new, keyed
+  on `kind: 'debrief', session_id`) — a hit returns its `content` directly
+  with zero calls to `coachCompletion`, which is the whole cost-control
+  point of this chunk. A miss fetches the session, its logged sets, its
+  PRs (`listPRsForSession`, already existed), and — only when
+  `mainPattern` is set — same-pattern history via the existing
+  `recentSessions(40)` (see Deviated), builds the context, calls
+  `coachCompletion({ kind: 'debrief', ... })` with a fixed one-line user
+  turn (a debrief has no real chat history to send), and on success saves
+  the reply as `kind: 'debrief', session_id` and returns its text. A
+  session that isn't `status: 'completed'` refuses before calling the model
+  (see Deviated) — a debrief reacts to what happened, and nothing has
+  happened yet. A `coachCompletion` failure logs via `console.error` (same
+  server-log destination `src/app/api/log-client-error/route.ts` already
+  writes to) and returns the failure untouched — no retry, no partial save.
+- **UI.** New `src/components/session/DebriefCard.tsx`, a small client
+  island next to `SessionSummary`'s own Notes-field state, not folded into
+  it. Calls `generateSessionDebrief` once on mount; a two-line `Skeleton`
+  stands in while it's in flight (no spinner, per this app's motion
+  language); on failure or an unconfigured instance it renders nothing at
+  all — not even the "Coach's take" label. `SessionSummary` gained a
+  `coachConfigured` prop (default `false`, so every other caller/test is
+  unaffected) and mounts `DebriefCard` only when it's `true`, positioned
+  after `PRMoment` and before the Notes field — the PR is the bigger
+  moment, the debrief is commentary underneath it. `src/app/session/[id]/
+  page.tsx` computes the prop server-side with `isCoachConfigured()`,
+  imported directly — never re-checked client-side.
+
+**Deviated:** four, all in `DECISIONS.md` (2026-09-02) — `debrief.ts`'s
+local structural types instead of the chunk file's literal `SessionRow`/
+`LoggedSetRow`/`Pr` (forced by the same `src/core`-can't-import-`@/server`
+rule chunk 25 already hit), generating a debrief for any completed session
+regardless of logged-set count rather than special-casing a fully-skipped
+one (plus the not-in-the-chunk-file-but-implied guard: only a `completed`
+session gets a debrief at all), sourcing "vs. last time" from the existing
+`recentSessions(40)` rather than a new query, and shipping `DebriefCard`
+as a plain client component rather than `next/dynamic`-loaded (measured
+bundle delta too small to justify a second loading boundary on this route).
+
+**Verified:** 467 tests (453 → +14: 3 `buildDebriefContext` — full fact
+set, deload/no-PR/no-history coherent output, zero-logged-sets says so
+plainly; 8 `generateSessionDebrief` — guard order, unconfigured-refuses-
+before-any-DB-read, existing-debrief-returned-with-zero-`coachCompletion`-
+calls, two-calls-one-`coachCompletion`-call [this chunk's own strong
+version of the caching test], not-finished/unknown-session refusals,
+success path asserting `kind: 'debrief'` and the real PR fact reaching the
+model, failure propagation; 3 `SessionSummary` — no card/no call when
+unconfigured, card appears and resolves when configured, card disappears
+entirely on a `coachCompletion` failure). `pnpm test && pnpm lint && pnpm
+typecheck && pnpm build && pnpm verify:actions` all clean.
+
+`/session/[id]`'s summary-view bundle delta, measured by stashing this
+chunk's changes and rebuilding: **235 → 236 kB** First Load JS (route-own
+JS 18.8 → 20.3 kB) — the acceptance box's own ask. `DebriefCard` plus the
+one new prop threading through `SessionSummary`/the page account for the
+whole 1 kB.
+
+**Not verified — same sandbox restriction as chunks 25/26:** no
+`ANTHROPIC_API_KEY` here, so the real end-to-end path (a debrief actually
+appearing within ~15 s of opening a real finished session, checked by
+hand) could not be timed. The integration code is real and reuses chunk
+25's `coachCompletion` wrapper unchanged; verification here is the mocked-
+`coachCompletion` test suite above, plus the hand-traced context-string
+spot-check described under "Landed" — consistent with how chunk 25 itself
+was verified, and per this task's own instructions. This is the runbook's
+own "only a human with a real key" category (`docs/11-COACH-PLATFORM.md
+§9`), not a new gap this chunk introduced.
+
+**Next chunk must know:** `coachRepo.getDebriefForSession` (session-keyed,
+uncached, mirrors `spentToday`/`spentThisMonth`'s "must see this request's
+own writes" reasoning) is the pattern for any future session-keyed coach
+lookup. `DebriefCard`'s mount-and-forget-with-skeleton shape is the one to
+reuse if chunk 28's proposal card needs the same "generate on view, cache
+after" behaviour for anything beyond the chat turn itself.
+
+**Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
+unrelated to this chunk. Chunk 27 itself has no blocker.

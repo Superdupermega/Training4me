@@ -1,6 +1,7 @@
 'use server';
 import { revalidatePath, revalidateTag } from 'next/cache';
 import { buildCoachContext, type CoachContextPr } from '@/core/coach/context';
+import { buildDebriefContext, type DebriefPr } from '@/core/coach/debrief';
 import { requireUnlocked } from '../authGuard';
 import * as repo from '../repo';
 import { TAGS } from '../repo';
@@ -10,7 +11,8 @@ import * as coachRepo from './repo';
 import type { Result } from './result';
 
 /**
- * The coach's one action this chunk — a read-only chat turn, no tool use
+ * `sendCoachMessage` (chunk 25, chat) and `generateSessionDebrief` (chunk 27,
+ * the session debrief) — both read-only-of-the-program turns, no tool use
  * (`docs/11-COACH-PLATFORM.md §0`: chunk 28 adds `propose_change`).
  * `requireUnlocked()` first, always, same isolation story as every action
  * in the top-level `actions.ts` (`00-CONTEXT.md §5`, `authGuard.ts`) — this
@@ -34,6 +36,28 @@ Progress is measured over months, not sessions.
 
 Answer like a training partner who has actually read the log: plain,
 specific, brief — a paragraph at most, not an essay.`;
+
+/**
+ * A debrief is a reaction, not a second summary — the session screen above
+ * it already shows sets/PRs/tonnage in full, so this prompt explicitly asks
+ * for a take on those facts rather than a restatement of them
+ * (`docs/chunks/chunk-27-debrief.md`'s "one sentence of *reaction*").
+ */
+const DEBRIEF_SYSTEM_PROMPT = `You are the training coach inside Training4me, a
+personal strength-training app built for one athlete, reacting to a session
+they just finished. Everything you are told about it below came straight out
+of their own log — never invent a number, a lift, a PR, or a detail that
+isn't given to you. If nothing much happened (a quiet session, nothing new),
+say something short and honest rather than manufacturing excitement.
+
+The app's own philosophy: a heavy barbell base done heavy but submaximal and
+repeatable, wrapped in a warm-up primer, tempo-controlled and unilateral
+accessory work, and an aerobic base — reps in reserve, not grinding to
+failure, progress measured over months.
+
+The screen this appears on already lists every set, PR and tonnage number in
+full — write one short, specific *reaction* to them (a sentence, at most
+two), not a restatement of the numbers themselves.`;
 
 /** The week the athlete is actually in right now — same rule `/today` uses: the week of the oldest not-done session, else the last week if the block is finished. */
 function thisWeeksSessions(sessions: repo.SessionRow[]): repo.SessionRow[] {
@@ -104,6 +128,96 @@ export async function sendCoachMessage(text: string): Promise<Result<{ replyId: 
     return { ok: true, data: { replyId: reply.id } };
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Something went wrong';
+    return { ok: false, error: message };
+  }
+}
+
+/**
+ * The session-finish debrief (`docs/chunks/chunk-27-debrief.md §2`).
+ * `requireUnlocked()` and `isCoachConfigured()` first, both before any DB
+ * read — an action is a public endpoint regardless of what the UI shows
+ * (`docs/11-COACH-PLATFORM.md §6.1`), so the unconfigured path never touches
+ * the database at all, cache check included.
+ *
+ * **Never regenerates an existing debrief** — this is the cost control that
+ * matters most here, since a debrief fires automatically on every summary
+ * view (not on athlete request like chat), so a naive implementation would
+ * re-bill on every reload. `coachRepo.getDebriefForSession` is checked
+ * first and, if a row exists, its content is returned directly with no call
+ * to `coachCompletion` at all.
+ */
+export async function generateSessionDebrief(sessionId: string): Promise<Result<{ text: string }>> {
+  try {
+    await requireUnlocked();
+    if (!isCoachConfigured()) return { ok: false, error: 'Coach is not configured.' };
+
+    const existing = await coachRepo.getDebriefForSession(sessionId);
+    if (existing) return { ok: true, data: { text: existing.content } };
+
+    const session = await repo.getSession(sessionId);
+    if (!session) return { ok: false, error: 'Session not found.' };
+    // A debrief reacts to what happened — nothing has happened yet on a
+    // session that isn't finished, planned or skipped included.
+    if (session.status !== 'completed') return { ok: false, error: 'Session is not finished yet.' };
+
+    const [rawLoggedSets, prs, profile, recent] = await Promise.all([
+      repo.getLoggedSets(sessionId),
+      repo.listPRsForSession(sessionId),
+      repo.getProfile(),
+      // "vs last time" framing only makes sense with a main pattern to
+      // compare against — skip the extra read otherwise.
+      session.mainPattern ? repo.recentSessions(40) : Promise.resolve([] as repo.SessionRow[]),
+    ]);
+
+    const context = buildDebriefContext({
+      session: {
+        title: session.title, weekNumber: session.weekNumber, isDeload: session.isDeload,
+        mainPattern: session.mainPattern, estimatedSec: session.estimatedSec,
+        actualSec: session.actualSec, autoregulated: session.autoregulated, blocks: session.blocks,
+      },
+      // `getLoggedSets` returns raw `t4m_logged_set` rows (snake_case),
+      // same shape `src/app/session/[id]/page.tsx` already maps by hand —
+      // not the camelCase `LoggedSetRow` write-input type.
+      loggedSets: rawLoggedSets.map((r) => ({
+        reps: r.reps ?? null,
+        weightKg: r.weight_kg != null ? Number(r.weight_kg) : null,
+        skipped: Boolean(r.skipped),
+      })),
+      prs: prs.map((p): DebriefPr => ({
+        exerciseId: p.exercise_id, kind: p.kind as DebriefPr['kind'], value: Number(p.value),
+        reps: p.reps, weightKg: p.weight_kg != null ? Number(p.weight_kg) : null,
+      })),
+      previousSessionsSamePattern: recent
+        .filter((s) => s.id !== session.id
+          && s.mainPattern === session.mainPattern && s.scheduledDate < session.scheduledDate)
+        .map((s) => ({ scheduledDate: s.scheduledDate })),
+    });
+
+    const result = await coachCompletion({
+      kind: 'debrief',
+      system: `${DEBRIEF_SYSTEM_PROMPT}\n\nWhat happened this session:\n${context}`,
+      messages: [{ role: 'user', content: 'React to this session.' }],
+      timezone: profile.timezone,
+    });
+    if (!result.ok) {
+      // No retry loop, no broken-looking card — the card simply won't
+      // appear (docs/chunks/chunk-27-debrief.md §4); this is the one place
+      // that failure is still worth a server-side log line.
+      console.error('[coach] debrief generation failed', { sessionId, error: result.error });
+      return result;
+    }
+    // `coachCompletion` always sets `data` on an `ok: true` result; the
+    // `Result<T>` contract's `data?: T` just doesn't say so in the type.
+    if (!result.data) return { ok: false, error: 'Coach returned no reply.' };
+
+    const saved = await coachRepo.insertCoachMessage({
+      role: 'assistant', kind: 'debrief', content: result.data.text, sessionId,
+    });
+    revalidateTag(TAGS.coach);
+    return { ok: true, data: { text: saved.content } };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Something went wrong';
+    console.error('[coach] debrief generation error', { sessionId, message });
     return { ok: false, error: message };
   }
 }
