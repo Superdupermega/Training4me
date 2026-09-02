@@ -253,9 +253,10 @@ src/server/      Supabase access and server actions (server-only)
 src/components/  UI, including the session player, the nav shell, and the routine builder
 src/app/         routes: /onboarding /today /program /program/builder /exercises
                   /history /profile /profile/settings /profile/export /session/[id]
-docs/            the original build plan, the methodology spec, the redesign plan,
-                  and the production review (07) with its RLS-tightening (08) and
-                  push-notification (09) setup follow-ups
+docs/            the original build plan, the methodology spec, the redesign plan (06),
+                  the production review (07) with its RLS-tightening (08) and
+                  push-notification (09) follow-ups, the feel-and-polish plan (10),
+                  and the coach-platform plan (11) with its chunk briefs 25–29
 ```
 
 `docs/01-METHODOLOGY.md` is the written spec the code implements. Where the code

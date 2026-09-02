@@ -35,3 +35,11 @@ backlog and should be picked up only after chunk 21.
 
 For each: write a short chunk file first (mission, deliverables, acceptance,
 do-not), then run it. Keep the discipline — that's what made the first twelve work.
+
+**Status as of the v3 plan (2026-09-02).** Done in earlier chunks: 1 (export,
+#16), 2 (reminders, #24 — code complete, secrets pending), 7 (bodyweight,
+#19), 10 (plate math, #17). Taken by chunk 26 of `11-COACH-PLATFORM.md`: 3
+(skip/shift week, forced deload) and 5 (1RM test week). Still open and still
+valid: 4 (alternate block templates), 6 (warm-up pinning), 8 (Swedish UI),
+9 (Apple Health / Google Fit). None of those is part of v3 — see
+`11-COACH-PLATFORM.md` §7.

@@ -1002,3 +1002,37 @@ migration succeeding.
 
 **Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
 unrelated to this chunk.
+
+## Chunk 25–29 — The coach platform plan (v3) — 2026-09-02
+**Landed:** `docs/11-COACH-PLATFORM.md` plus five chunk files (25–29): a
+Claude-backed coach that reads the whole log through a pure, deterministic
+*dossier*, answers questions (25), writes structured session debriefs and
+weekly/block reviews off the critical path (27), and *proposes* typed changes
+that pure `src/core` code validates and the athlete applies through the
+existing actions (28); block controls — push back a week, deload now, 1RM
+test week — as pure engine functions first (26); and the standing debts —
+the exercise library in every client bundle, push-config invisibility,
+stale docs (29). No code changed.
+
+**The rule of the phase:** the coach proposes, the core disposes. No path
+exists where the model writes a program, session, set or training max.
+
+**Also fixed on the way:** `docs/00-CONTEXT.md` §1 and §3–§6 described a
+stack and layout that never shipped (MUI v6, magic-link auth, Playwright,
+`supabase/migrations/`, a 2026-08 branch name, a four-part DoD). Rewritten
+from the tree; the PIN gate and the five-part DoD are now in the file every
+chunk reads first. `RUNBOOK.md` rewritten for the same reason, with the
+device-only checks no agent can do listed for the human.
+
+**Next chunk must know:**
+- `rollOverTrainingMaxes()` hard-codes the peak week (`weeks === 4 ? 3 : 5`).
+  Chunk 26 §0 replaces it with `findPeakWeek()` *before* anything can change
+  a block's shape. Do not build a deload/test-week path on the old line.
+- `t4m_program.weeks` is `check 4 or 6`; chunk 26 needs a migration to widen it.
+- Route budgets are already over on three routes for one known reason
+  (finding #22); chunk 29 fixes it. Report numbers, never edit budgets.
+- SDK method names come from the `claude-api` skill or the SDK README, never
+  from memory (chunk 25 §0).
+
+**Blocked:** #24 (`VAPID_PRIVATE_KEY`/`CRON_SECRET`) unchanged; chunk 29 §2
+makes the missing configuration visible rather than pretending to fix it.

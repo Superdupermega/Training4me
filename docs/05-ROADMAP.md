@@ -1,5 +1,9 @@
 # 05 — ROADMAP
 
+> **Historical.** This is the v1 roadmap (chunks 01–13), kept as written.
+> Later phases: `06-REDESIGN-PLAN.md` (14–21), `10-FEEL-AND-POLISH.md`
+> (22–24), `11-COACH-PLATFORM.md` (25–29, current).
+
 13 chunks. Each is one Sonnet session. Each ends green, committed and pushed.
 
 ---
