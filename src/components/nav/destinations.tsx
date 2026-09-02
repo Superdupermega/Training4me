@@ -1,4 +1,5 @@
 import CalendarMonthIcon from '@mui/icons-material/CalendarMonth';
+import ChatBubbleOutlineIcon from '@mui/icons-material/ChatBubbleOutlineOutlined';
 import FitnessCenterIcon from '@mui/icons-material/FitnessCenter';
 import HistoryIcon from '@mui/icons-material/History';
 import PersonIcon from '@mui/icons-material/Person';
@@ -23,3 +24,13 @@ export const DESTINATIONS: Destination[] = [
   { label: 'History', href: '/history', icon: <HistoryIcon /> },
   { label: 'Profile', href: '/profile', icon: <PersonIcon /> },
 ];
+
+/**
+ * A sixth destination, appended only when `isCoachConfigured()` is true
+ * (chunk 25 — `docs/11-COACH-PLATFORM.md §1`: no nav entry when the coach
+ * isn't configured, checked server-side in `AppShell`, never hidden with
+ * CSS). Kept separate from `DESTINATIONS` itself rather than folded in, so
+ * that constant stays "always five, always shown" and every conditional
+ * lives in the one place that decides it.
+ */
+export const COACH_DESTINATION: Destination = { label: 'Coach', href: '/coach', icon: <ChatBubbleOutlineIcon /> };

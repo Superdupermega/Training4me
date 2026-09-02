@@ -4,11 +4,12 @@ import BottomNavigationAction from '@mui/material/BottomNavigationAction';
 import Box from '@mui/material/Box';
 import Paper from '@mui/material/Paper';
 import Link from 'next/link';
-import { DESTINATIONS } from './destinations';
+import type { Destination } from './destinations';
 import { useActiveDestination } from './useActiveDestination';
 
-export function BottomNav() {
-  const { active, onNavigate } = useActiveDestination();
+/** `destinations` comes from `AppShell` (server-side) — see NavRail's own note. */
+export function BottomNav({ destinations }: { destinations: Destination[] }) {
+  const { active, onNavigate } = useActiveDestination(destinations);
 
   return (
     <Paper
@@ -43,7 +44,7 @@ export function BottomNav() {
           px: 1,
         }}
       >
-        {DESTINATIONS.map((d) => {
+        {destinations.map((d) => {
           const selected = active === d.href;
           return (
             // A real <Link>, not router.push — gives Next's viewport prefetch,

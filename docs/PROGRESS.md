@@ -1002,3 +1002,103 @@ migration succeeding.
 
 **Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
 unrelated to this chunk.
+
+## Chunk 25 — The coach, wired — 2026-09-02
+**Landed:** The whole foundation chunk from `chunk-25-coach-wired.md` — data
+model, cost metering, the absent-key gate, and a working (if simple) chat.
+Nothing here writes to a program (chunk 28's job).
+
+- **Migration** (`t4m_coach_message`, `t4m_coach_usage`), applied live to
+  `cyberpunk-vibe01` and confirmed by direct `information_schema`/
+  `pg_policies` queries — RLS on, one `service_role`-only policy each (see
+  Deviated: this is not the `anon, authenticated` pattern §3 itself
+  describes, since §3 predates `08-RLS-TIGHTENING.md`).
+- `src/server/coach/config.ts` — `isCoachConfigured()`, plus `dailyCapUsd()`/
+  `monthlyCapUsd()` (env-backed, default 2/20).
+- `src/core/coach/costCap.ts` — pure `capCheck`, boundary documented (exactly
+  at the cap still allows the next call).
+- `src/core/coach/context.ts` — `buildCoachContext`, pure, its own local
+  structural types rather than importing `Profile`/`ProgramRow`/`SessionRow`/
+  `Pr` from `@/server/repo` (`src/core` cannot depend on `@/server` at all —
+  `eslint.config.mjs` enforces it — same pattern
+  `src/core/progression/retrospective.ts` already uses).
+- `src/server/coach/anthropic.ts` — the one file that imports
+  `@anthropic-ai/sdk`. `coachCompletion`: defensive `isCoachConfigured()`
+  check, cap check *before* the network call, the real request, real-usage
+  recording *after* (even on a `stop_reason: "refusal"` — tokens were still
+  spent), a most-specific-first typed-error catch chain, never throws.
+- `src/server/coach/repo.ts` — `insertCoachMessage`/`listCoachMessages`
+  (limit 20, newest-first selected then returned chronological — serves both
+  the page's render order and the model's history with no re-sorting),
+  `recordUsage`, `spentToday`/`spentThisMonth` (bucketed by the athlete's own
+  local calendar day/month in JS, the same technique `analytics.ts`'s
+  `isoWeekStart` already established, reused rather than reinvented — never
+  `unstable_cache`d, since a cap check must see spend from moments ago in the
+  same request). New `TAGS.coach` in `src/server/repo.ts`.
+- `src/server/coach/actions.ts` — `sendCoachMessage`: `requireUnlocked()`
+  first, then `isCoachConfigured()`, saves the athlete's message before ever
+  calling the model (a refusal still keeps their side of the exchange),
+  assembles context from `getProfile`/`getActiveProgram`/`listSessions`/
+  `listPRs`, calls `coachCompletion` with no `tools` (chunk 28 adds
+  `propose_change`), saves the reply, `revalidatePath('/coach')`.
+- `/coach` (`src/app/coach/page.tsx`) — resolves either way; unconfigured
+  renders a plain explanation, nothing else; configured renders
+  `listCoachMessages()` as a role-distinguished thread (no bubble-chrome
+  library) plus `src/components/coach/MessageInput.tsx`, the one small
+  client island (`TextField` + send button, `router.refresh()` on success —
+  same shape `BodyweightCard`/`SkipSessionButton` already use).
+- Nav: `AppShell` (a Server Component — confirmed by its now importing
+  `isCoachConfigured()` directly) computes the destination list once,
+  server-side, and passes it down; `NavRail`/`BottomNav`/
+  `useActiveDestination` now take `destinations` as an argument instead of
+  importing the module-level `DESTINATIONS` constant themselves — the one
+  place that decides whether "Coach" belongs in the list is now the one
+  place capable of deciding it, per the chunk's own "check it server side...
+  don't hide with CSS" instruction.
+
+**Deviated:** six, all in `DECISIONS.md` (2026-09-02) — the RLS policy
+pattern (service_role-only, not `11-COACH-PLATFORM.md §3`'s literal wording,
+since that section predates the tightening), the exact `@anthropic-ai/sdk`
+version pinned, the model ids/prices sourced from the `claude-api` skill
+rather than the plan doc's own numbers, the cap-check boundary rule, the
+chat-history trim `N` (20), and recording usage even on a refusal.
+
+**Verified:** 428 tests (403 → +25: 8 `capCheck`, 5 `buildCoachContext`, 7
+`coachCompletion` — including the acceptance criterion's own ask, a test
+proving the mocked SDK constructor and `messages.create` are never invoked
+on both the unconfigured path and the over-cap path — and 5 `sendCoachMessage`,
+proving `requireUnlocked` runs first and the unconfigured path never touches
+`coachCompletion` at all). `pnpm test && pnpm lint && pnpm typecheck && pnpm
+build && pnpm verify:actions` all clean.
+
+Live-checked in this session (unlike most prior UI verification — Supabase
+itself was reachable via the MCP tools used for the migration, but the
+running Next app's own network path to it is still blocked in this sandbox,
+same restriction every earlier chunk hit): `pnpm build && APP_PIN=1234 pnpm
+start`, hit with a hand-derived unlock cookie. `/coach` returns 200 and
+renders the "isn't set up yet" explanation (no `ANTHROPIC_API_KEY` in this
+sandbox); `/today` returns 200 too but its own DB read fails for the
+already-documented reason (no live data path from the running app here),
+unrelated to this chunk. Confirmed directly in both pages' markup: zero
+`href="/coach"` anywhere — the nav gate genuinely omits the entry rather than
+hiding it. A real chat round-trip and a real cap refusal against live usage
+are the runbook's own "only a human with a real key" checks (§9) — not
+performed here, per the task's own instructions; the code path is exercised
+instead with the SDK call mocked, per the chunk's test list.
+
+**`/coach` first-load JS:** **186 kB**, from the same `next build` route
+table used for every prior chunk's number. For reference against nearby
+routes from that same build: `/` 149 kB, `/today` 165 kB, `/history`
+162 kB, `/program` 175 kB — `/coach` lands mid-pack, not the largest route in
+the app (`/session/[id]` 235 kB, `/exercises` 217 kB, `/profile` 222 kB all
+still carry more). Under `chunk-21-polish.md` §4's original 170 kB-class
+targets it would be over by 16 kB, consistent with every route in the app
+being over that pre-chunk-15 budget already (`PROGRESS.md`, chunk 21) — not
+a new problem this chunk introduced. Chunk 29 (independent, run before 28
+specifically if this number warranted it) can treat 186 kB as its baseline;
+nothing here suggests it needs to run early on this number alone.
+
+**Blocked:** #24 only (`VAPID_PRIVATE_KEY`/`CRON_SECRET`), unchanged —
+unrelated to this chunk. Chunk 25 itself has no blocker: the migration
+applied and verified live, and every acceptance box that can be closed
+without a real `ANTHROPIC_API_KEY` is closed.

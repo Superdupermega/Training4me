@@ -3,7 +3,7 @@ import Box from '@mui/material/Box';
 import Stack from '@mui/material/Stack';
 import Typography from '@mui/material/Typography';
 import Link from 'next/link';
-import { DESTINATIONS } from './destinations';
+import type { Destination } from './destinations';
 import { RAIL_WIDTH } from './layout';
 import { useActiveDestination } from './useActiveDestination';
 
@@ -12,9 +12,13 @@ import { useActiveDestination } from './useActiveDestination';
  * icon over label, a pill-shaped active indicator behind the icon, fixed to
  * the left edge at ≥ 900 px. Rendered unconditionally and hidden with CSS
  * (not branched in JS) so there is no hydration flash on first paint.
+ *
+ * `destinations` comes from `AppShell` (server-side), which decides whether
+ * "Coach" belongs in the list at all (chunk 25) — this component just
+ * renders whatever it's given.
  */
-export function NavRail() {
-  const { active, onNavigate } = useActiveDestination();
+export function NavRail({ destinations }: { destinations: Destination[] }) {
+  const { active, onNavigate } = useActiveDestination(destinations);
 
   return (
     <Box
@@ -31,7 +35,7 @@ export function NavRail() {
         bgcolor: 'background.paper',
       }}
     >
-      {DESTINATIONS.map((d) => {
+      {destinations.map((d) => {
         const selected = active === d.href;
         return (
           <Stack

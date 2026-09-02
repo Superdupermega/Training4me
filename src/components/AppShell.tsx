@@ -1,7 +1,9 @@
 import Box from '@mui/material/Box';
 import type { ReactNode } from 'react';
+import { isCoachConfigured } from '@/server/coach/config';
 import type { ContentWidth } from './PageContainer';
 import { BottomNav } from './nav/BottomNav';
+import { COACH_DESTINATION, DESTINATIONS } from './nav/destinations';
 import { RAIL_WIDTH } from './nav/layout';
 import { NavRail } from './nav/NavRail';
 import { TopBar } from './nav/TopBar';
@@ -30,9 +32,15 @@ interface Props {
  * only owns the nav chrome and the safe-area padding around it.
  */
 export function AppShell({ children, title, action, backHref, width = 'narrow' }: Props) {
+  // Checked here, server-side, once — not hidden with CSS on the client.
+  // `docs/11-COACH-PLATFORM.md §1`: no "Coach" entry anywhere in the nav
+  // when `ANTHROPIC_API_KEY` isn't set, and `/coach` itself still resolves
+  // via a direct link regardless (its own page checks this again).
+  const destinations = isCoachConfigured() ? [...DESTINATIONS, COACH_DESTINATION] : DESTINATIONS;
+
   return (
     <Box sx={{ minHeight: '100dvh', display: 'flex' }}>
-      <NavRail />
+      <NavRail destinations={destinations} />
       {/*
         `NavRail` is `position: fixed`, so it is out of flow and reserves no
         space of its own. This spacer is what actually holds the rail's
@@ -60,7 +68,7 @@ export function AppShell({ children, title, action, backHref, width = 'narrow' }
           {children}
         </Box>
       </Box>
-      <BottomNav />
+      <BottomNav destinations={destinations} />
     </Box>
   );
 }

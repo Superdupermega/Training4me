@@ -20,6 +20,8 @@ export const TAGS = {
   sessions: 'sessions',
   logs: 'logs',
   bodyweight: 'bodyweight',
+  /** t4m_coach_message reads (chunk 25) — t4m_coach_usage is never cached, see coach/repo.ts. */
+  coach: 'coach',
 } as const;
 
 export interface Profile {
